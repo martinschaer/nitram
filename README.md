@@ -1,5 +1,8 @@
-# Concierge
+# Nitram
+
+Opinionated RPC server for Rust and Typescript.
 
 ## To do:
 
-- Vendor concierge.ts
+- Quick start guide
+- Vendor nitram.ts
