@@ -43,7 +43,7 @@ macro_rules! nitram_handler {
         $( $param_name:ident : $param_ty:ty ),*
     ) => {
         #[derive(Deserialize, Clone, TS)]
-        #[ts(export, export_to = "API/Jobs.ts")]
+        #[ts(export, export_to = "API/Params.ts")]
         pub struct $params_ty {
             $(
                 $param_name: $param_ty,

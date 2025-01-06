@@ -42,4 +42,8 @@ actix-web = "4.8.0"
 actix-ws = "0.3.0"
 
 [dev-dependencies]
+# -- For example
+# Static SPA files
 actix-files = "0.6.6"
+# Logging
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }

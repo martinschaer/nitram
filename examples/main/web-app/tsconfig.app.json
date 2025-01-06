@@ -24,7 +24,7 @@
     "noUncheckedSideEffectImports": true,
 
     "paths": {
-      "nitram/*": ["../../bindings/*"]
+      "nitram/*": ["../bindings/*"]
     }
   },
   "include": ["src"]
