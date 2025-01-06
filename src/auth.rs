@@ -21,16 +21,16 @@ pub struct SessionAuthedResource {
 }
 
 #[derive(Clone)]
-pub enum ConciergeSession {
+pub enum NitramSession {
     Anonymous,
     Authenticated(Session),
 }
 
-impl fmt::Debug for ConciergeSession {
+impl fmt::Debug for NitramSession {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ConciergeSession::Anonymous => write!(f, "Anonymous"),
-            ConciergeSession::Authenticated(session) => {
+            NitramSession::Anonymous => write!(f, "Anonymous"),
+            NitramSession::Authenticated(session) => {
                 write!(f, "Authenticated({})", session.id)
             }
         }

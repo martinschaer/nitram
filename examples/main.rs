@@ -1,16 +1,14 @@
 use actix_files::NamedFile;
-use concierge::EmptyParams;
-use concierge::FromResources;
-use concierge::IntoParams;
+use actix_web::{middleware::Logger, web, App, HttpServer};
+use nitram::EmptyParams;
+use nitram::FromResources;
+use nitram::IntoParams;
+use nitram::NitramInner;
+use nitram::{auth::SessionAuthedResource, error::MethodResult, nitram_handler, ws, NitramBuilder};
 use serde::Deserialize;
 use std::sync::Arc;
-use ts_rs::TS;
-
-use actix_web::{middleware::Logger, web, App, HttpServer};
-use concierge::{
-    auth::SessionAuthedResource, concierge_handler, error::MethodResult, ws, ConciergeBuilder,
-};
 use tokio::sync::Mutex;
+use ts_rs::TS;
 
 #[derive(Clone)]
 struct MockDB {}
@@ -21,25 +19,25 @@ impl MockDB {
 }
 
 #[derive(Clone)]
-struct ConciergeResource {
+struct NitramResource {
     db: MockDB,
 }
-impl FromResources for ConciergeResource {}
-impl ConciergeResource {
+impl FromResources for NitramResource {}
+impl NitramResource {
     fn new() -> Self {
         Self { db: MockDB {} }
     }
 }
 
-async fn hello_handler(resource: ConciergeResource) -> MethodResult<String> {
+async fn hello_handler(resource: NitramResource) -> MethodResult<String> {
     Ok(resource.db.get())
 }
-concierge_handler!(HelloAPI, String);
+nitram_handler!(HelloAPI, String);
 
 async fn echo_handler(session: SessionAuthedResource, params: EchoParams) -> MethodResult<String> {
     Ok(format!("Hello {}: {}", session.user_id, params.msg))
 }
-concierge_handler!(EchoAPI, EchoParams,String, msg:String);
+nitram_handler!(EchoAPI, EchoParams,String, msg:String);
 
 async fn signal_handler(session: SessionAuthedResource) -> MethodResult<String> {
     Ok(format!("Hello {}", session.user_id))
@@ -51,19 +49,19 @@ async fn index() -> actix_web::Result<NamedFile> {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    let inner = concierge::ConciergeInner::default();
+    let inner = NitramInner::default();
     let inner_arc = Arc::new(Mutex::new(inner));
-    let resource = ConciergeResource::new();
-    let cb = ConciergeBuilder::default()
+    let resource = NitramResource::new();
+    let cb = NitramBuilder::default()
         .add_resource(resource)
         .add_public_handler("Hello", hello_handler)
         .add_private_handler("Echo", echo_handler)
         .add_signal_handler("Signal", signal_handler);
-    let concierge = cb.build(inner_arc);
+    let nitram = cb.build(inner_arc);
     HttpServer::new(move || {
         App::new()
             .wrap(Logger::default())
-            .app_data(web::Data::new(concierge.clone()))
+            .app_data(web::Data::new(nitram.clone()))
             .route("/", web::get().to(index))
             .service(actix_files::Files::new("/", "examples/web-app/dist"))
             .route("/ws", web::get().to(ws::handler))

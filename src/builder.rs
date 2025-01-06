@@ -2,9 +2,9 @@ use rpc_router::{FromResources, Handler, RouterBuilder};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use crate::{Concierge, ConciergeInner};
+use crate::{Nitram, NitramInner};
 
-pub struct ConciergeBuilder {
+pub struct NitramBuilder {
     rpc_router_builder_public: RouterBuilder,
     rpc_router_builder_private: RouterBuilder,
     rpc_router_builder_signals: RouterBuilder,
@@ -13,9 +13,9 @@ pub struct ConciergeBuilder {
     registered_signal_handlers: Vec<String>,
 }
 
-impl Default for ConciergeBuilder {
+impl Default for NitramBuilder {
     fn default() -> Self {
-        ConciergeBuilder {
+        NitramBuilder {
             rpc_router_builder_public: RouterBuilder::default(),
             rpc_router_builder_private: RouterBuilder::default(),
             rpc_router_builder_signals: RouterBuilder::default(),
@@ -26,7 +26,7 @@ impl Default for ConciergeBuilder {
     }
 }
 
-impl ConciergeBuilder {
+impl NitramBuilder {
     pub fn add_resource(
         mut self,
         resource: impl FromResources + Clone + Send + Sync + 'static,
@@ -85,7 +85,7 @@ impl ConciergeBuilder {
         self
     }
 
-    pub fn build(self, inner: Arc<Mutex<ConciergeInner>>) -> Concierge {
+    pub fn build(self, inner: Arc<Mutex<NitramInner>>) -> Nitram {
         tracing::debug!(
             "Registered public handlers: {:?}",
             self.registered_public_handlers
@@ -98,7 +98,7 @@ impl ConciergeBuilder {
             "Registered signal handlers: {:?}",
             self.registered_signal_handlers
         );
-        Concierge::new(
+        Nitram::new(
             self.rpc_router_builder_public.build(),
             self.rpc_router_builder_private.build(),
             self.rpc_router_builder_signals.build(),

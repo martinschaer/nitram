@@ -6,12 +6,12 @@ use std::{
 };
 use tokio::sync::Mutex;
 
-use crate::Concierge;
+use crate::Nitram;
 
 pub async fn handler(
     req: HttpRequest,
     body: web::Payload,
-    concierge: web::Data<Concierge>,
+    nitram: web::Data<Nitram>,
 ) -> std::result::Result<HttpResponse, actix_web::Error> {
     let (response, mut session, stream) = actix_ws::handle(&req, body)?;
 
@@ -19,7 +19,7 @@ pub async fn handler(
     // increase the maximum allowed frame size to 128KiB and aggregate continuation frames
     let mut stream = stream.max_frame_size(128 * 1024).aggregate_continuations();
 
-    let (session_id, count) = concierge.insert().await;
+    let (session_id, count) = nitram.insert().await;
     tracing::info!(
         sess = session_id.to_string(),
         count = count,
@@ -30,7 +30,7 @@ pub async fn handler(
 
     let mut session2 = session.clone();
     let alive2 = alive.clone();
-    let concierge_for_loop = concierge.clone();
+    let nitram_for_loop = nitram.clone();
     actix_web::rt::spawn(async move {
         let mut interval = actix_web::rt::time::interval(Duration::from_secs(5));
 
@@ -54,9 +54,7 @@ pub async fn handler(
             }
 
             // -- Session signals
-            let signals = concierge_for_loop
-                .get_signals_for_session(&session_id)
-                .await;
+            let signals = nitram_for_loop.get_signals_for_session(&session_id).await;
             match serde_json::to_string(&signals) {
                 Ok(json) => {
                     let _ = session2.text(json).await;
@@ -66,7 +64,7 @@ pub async fn handler(
         }
 
         tracing::debug!(sess = session_id.to_string(), "Loop ended");
-        concierge_for_loop.remove(&session_id).await;
+        nitram_for_loop.remove(&session_id).await;
     });
 
     actix_web::rt::spawn(async move {
@@ -80,7 +78,7 @@ pub async fn handler(
 
                 AggregatedMessage::Text(string) => {
                     tracing::debug!(sess = session_id.to_string(), "Relaying text: {}", string);
-                    let res = concierge.send(string, &session_id).await;
+                    let res = nitram.send(string, &session_id).await;
                     let _ = session.text(res).await;
                 }
 
@@ -98,7 +96,7 @@ pub async fn handler(
             };
         }
         let _ = session.close(None).await;
-        concierge.remove(&session_id).await;
+        nitram.remove(&session_id).await;
     });
 
     tracing::info!(sess = session_id.to_string(), "Spawned");

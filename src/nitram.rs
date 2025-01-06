@@ -5,40 +5,40 @@ use std::{collections::BTreeMap, sync::Arc};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-use crate::auth::{ConciergeSession, SessionAnonymResource, SessionAuthedResource};
+use crate::auth::{NitramSession, SessionAnonymResource, SessionAuthedResource};
 use crate::error::{Error, MethodError, Result};
-use crate::messages::{ConciergeRequest, ConciergeResponse, ConciergeSignal};
+use crate::messages::{NitramRequest, NitramResponse, NitramSignal};
 use crate::models::Session;
 use crate::nice::{Nice, NiceMessage};
 
-pub struct ConciergeInner {
-    sessions: BTreeMap<Uuid, ConciergeSession>,
+pub struct NitramInner {
+    sessions: BTreeMap<Uuid, NitramSession>,
 }
 
-impl Default for ConciergeInner {
+impl Default for NitramInner {
     fn default() -> Self {
-        ConciergeInner {
+        NitramInner {
             sessions: BTreeMap::new(),
         }
     }
 }
 
-impl ConciergeInner {
+impl NitramInner {
     pub fn add_anonym_session(&mut self) -> Uuid {
         let id = Uuid::new_v4();
-        self.sessions.insert(id, ConciergeSession::Anonymous);
+        self.sessions.insert(id, NitramSession::Anonymous);
         id
     }
     pub fn add_auth_session(&mut self, session_id: Uuid, session: Session) -> Uuid {
         self.sessions
-            .insert(session_id, ConciergeSession::Authenticated(session));
+            .insert(session_id, NitramSession::Authenticated(session));
         session_id
     }
 }
 
 #[derive(Clone)]
-pub struct Concierge {
-    pub inner: Arc<Mutex<ConciergeInner>>,
+pub struct Nitram {
+    pub inner: Arc<Mutex<NitramInner>>,
     rpc_router_public: Router,
     rpc_router_private: Router,
     rpc_router_signals: Router,
@@ -47,7 +47,7 @@ pub struct Concierge {
     registered_signal_handlers: Vec<String>,
 }
 
-impl Concierge {
+impl Nitram {
     pub fn new(
         rpc_router_public: Router,
         rpc_router_private: Router,
@@ -55,10 +55,10 @@ impl Concierge {
         registered_public_handlers: Vec<String>,
         registered_private_handlers: Vec<String>,
         registered_signal_handlers: Vec<String>,
-        inner: Arc<Mutex<ConciergeInner>>,
+        inner: Arc<Mutex<NitramInner>>,
     ) -> Self {
         // TODO: spawn a tokio task to read from live query streams
-        Concierge {
+        Nitram {
             inner,
             rpc_router_public,
             rpc_router_private,
@@ -72,7 +72,7 @@ impl Concierge {
     pub async fn insert(&self) -> (Uuid, usize) {
         let uuid = Uuid::new_v4();
         let mut sessions = self.inner.lock().await;
-        sessions.sessions.insert(uuid, ConciergeSession::Anonymous);
+        sessions.sessions.insert(uuid, NitramSession::Anonymous);
         let count = sessions.sessions.len();
         (uuid, count)
     }
@@ -91,8 +91,8 @@ impl Concierge {
     async fn is_auth(&self, session_id: &Uuid) -> Result<crate::models::Session> {
         let inner = self.inner.lock().await;
         match inner.sessions.get(session_id) {
-            Some(ConciergeSession::Authenticated(session)) => Ok(session.clone()),
-            Some(ConciergeSession::Anonymous) => Err(Error::NotAuthorized),
+            Some(NitramSession::Authenticated(session)) => Ok(session.clone()),
+            Some(NitramSession::Anonymous) => Err(Error::NotAuthorized),
             _ => Err(Error::NotAuthenticated),
         }
     }
@@ -146,33 +146,33 @@ impl Concierge {
     }
 
     pub async fn send(&self, payload: impl Into<ByteString>, session_id: &Uuid) -> String {
-        let parsed = serde_json::from_str::<ConciergeRequest>(&payload.into());
+        let parsed = serde_json::from_str::<NitramRequest>(&payload.into());
         let response = match parsed {
             Ok(req) => {
                 let id = req.id;
                 let method = req.method;
                 let params = req.params;
                 let res = match self.handle(session_id, &method, params).await {
-                    Ok(res) => ConciergeResponse {
+                    Ok(res) => NitramResponse {
                         id,
                         response: res,
                         ok: true,
                         method,
                     },
-                    Err(Error::NotAuthorized) => ConciergeResponse {
+                    Err(Error::NotAuthorized) => NitramResponse {
                         id,
                         response: Nice::from(NiceMessage::NotAuthorized).into(),
                         ok: false,
                         method,
                     },
-                    Err(Error::NotAuthenticated) => ConciergeResponse {
+                    Err(Error::NotAuthenticated) => NitramResponse {
                         id,
                         response: Nice::from(NiceMessage::NotAuthenticated).into(),
                         ok: false,
                         method,
                     },
                     Err(Error::RpcCallError(e)) => match e.error {
-                        rpc_router::Error::Handler(e) => ConciergeResponse {
+                        rpc_router::Error::Handler(e) => NitramResponse {
                             id,
                             response: serde_json::to_value(e.get::<MethodError>())
                                 .unwrap_or_default(),
@@ -180,34 +180,34 @@ impl Concierge {
                             method,
                         },
                         rpc_router::Error::ParamsParsing(_)
-                        | rpc_router::Error::ParamsMissingButRequested => ConciergeResponse {
+                        | rpc_router::Error::ParamsMissingButRequested => NitramResponse {
                             id,
                             response: Nice::from(NiceMessage::BadRequest).into(),
                             ok: false,
                             method,
                         },
-                        rpc_router::Error::MethodUnknown => ConciergeResponse {
+                        rpc_router::Error::MethodUnknown => NitramResponse {
                             id,
                             response: Nice::from(NiceMessage::BadRequest).into(),
                             ok: false,
                             method,
                         },
-                        _ => ConciergeResponse {
+                        _ => NitramResponse {
                             id,
                             response: Nice::from(NiceMessage::ServerError).into(),
                             ok: false,
                             method,
                         },
                     },
-                    Err(Error::MethodNotFound) => ConciergeResponse {
+                    Err(Error::MethodNotFound) => NitramResponse {
                         id,
                         response: Nice::from(NiceMessage::BadRequest).into(),
                         ok: false,
                         method,
                     },
                     Err(e) => {
-                        tracing::error!("Concierge unknown error: {}", e);
-                        ConciergeResponse {
+                        tracing::error!("Nitram unknown error: {}", e);
+                        NitramResponse {
                             id,
                             response: Nice::from(NiceMessage::ServerError).into(),
                             ok: false,
@@ -218,7 +218,7 @@ impl Concierge {
                 res
             }
             Err(_) => {
-                let res = ConciergeResponse::error("Invalid message, check API");
+                let res = NitramResponse::error("Invalid message, check API");
                 res
             }
         };
@@ -226,12 +226,12 @@ impl Concierge {
         serde_json::to_string(&response).unwrap_or_default()
     }
 
-    pub async fn get_signals_for_session(&self, session_id: &Uuid) -> Vec<ConciergeSignal> {
-        let mut signals: Vec<ConciergeSignal> = vec![];
+    pub async fn get_signals_for_session(&self, session_id: &Uuid) -> Vec<NitramSignal> {
+        let mut signals: Vec<NitramSignal> = vec![];
         let inner = self.inner.lock().await;
         let session = inner.sessions.get(session_id);
         if let Some(session) = session {
-            if let ConciergeSession::Authenticated(session) = session {
+            if let NitramSession::Authenticated(session) = session {
                 // Call registered signal handlers
                 for signal_handler_name in &self.registered_signal_handlers {
                     let rpc_request = Request {
@@ -253,7 +253,7 @@ impl Concierge {
 
                     match result {
                         Ok(result) => {
-                            signals.push(ConciergeSignal {
+                            signals.push(NitramSignal {
                                 signal: signal_handler_name.clone(),
                                 payload: result,
                             });
