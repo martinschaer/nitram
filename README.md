@@ -5,6 +5,6 @@ Opinionated RPC server for Rust and Typescript.
 ## To do:
 
 - Quick start guide
-- Call methods in example
-- Get signals in example
+- Fix example: SendMessage is returning NotAuthorized
+- Fix signals
 - Vendor examples/main/web-app/src/lib/nitram.ts

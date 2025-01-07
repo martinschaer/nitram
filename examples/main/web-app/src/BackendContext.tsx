@@ -81,7 +81,7 @@ export const BackendProvider: ParentComponent<{
   return (
     <BackendContext.Provider value={{ server }}>
       <Switch>
-        <Match when={isAuthenticated() === null}>Authenticating...</Match>
+        <Match when={isAuthenticated() === null}>Connecting...</Match>
         <Match when={isAuthenticated() === true}>{props.children}</Match>
         <Match when={isAuthenticated() === false}>{props.publicChildren}</Match>
       </Switch>

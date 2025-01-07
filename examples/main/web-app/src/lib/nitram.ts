@@ -174,6 +174,7 @@ export class Server<AuthenticateAPI extends { i: JsonValue; o: JsonValue }> {
   }
 
   async auth(token: string): Promise<boolean> {
+    localStorage.setItem("token", token);
     return this.request<AuthenticateAPI>({
       id: "fake",
       method: "Authenticate",
@@ -187,13 +188,16 @@ export class Server<AuthenticateAPI extends { i: JsonValue; o: JsonValue }> {
       },
       (e) => {
         console.error(e);
-        this.is_authenticated = false;
-        this.triggerEvent("auth", false);
-        // TODO: should we?
-        // localStorage.getItem("token");
+        this.logout();
         return false;
       },
     );
+  }
+
+  logout() {
+    this.is_authenticated = false;
+    this.triggerEvent("auth", false);
+    localStorage.removeItem("token");
   }
 
   // ---------------------------------------------------------------------------

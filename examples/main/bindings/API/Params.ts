@@ -2,4 +2,6 @@
 
 export type AuthenticateParams = { token: string, };
 
-export type EchoParams = { msg: string, };
+export type GetTokenParams = { user_name: string, };
+
+export type SendMessageParams = { message: string, };

@@ -10,7 +10,7 @@ pub enum AuthStrategy {
     EmailLink,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ParsedToken {
     pub expires_at: DateTime<Utc>,
     pub session_id: Uuid,

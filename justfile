@@ -14,4 +14,4 @@ build-example:
     cd examples/main/web-app && bun run build
 
 run-example: build-example
-    cargo run --example main
+    RUST_LOG=debug cargo run --example main

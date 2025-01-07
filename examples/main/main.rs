@@ -1,33 +1,71 @@
 use actix_files::NamedFile;
 use actix_web::{middleware::Logger, web, App, HttpServer};
-use nitram::EmptyParams;
+use nitram::auth::parse_token;
+use nitram::auth::SessionAnonymResource;
+use nitram::error::MethodError;
+use nitram::models::AuthStrategy;
+use nitram::models::ParsedToken;
+use nitram::models::Session;
 use nitram::FromResources;
 use nitram::IntoParams;
 use nitram::NitramInner;
 use nitram::{auth::SessionAuthedResource, error::MethodResult, nitram_handler, ws, NitramBuilder};
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
 use ts_rs::TS;
+use uuid::Uuid;
 
 #[derive(Clone)]
-struct MockDB {}
+struct User {
+    id: String,
+    name: String,
+}
+impl User {
+    fn new(name: String) -> Self {
+        Self {
+            id: Uuid::new_v4().to_string(),
+            name,
+        }
+    }
+}
+
+#[derive(Clone, Default)]
+struct MockDB {
+    users: HashMap<String, User>,
+    messages: Vec<String>,
+}
 impl MockDB {
-    fn get(&self) -> String {
-        "hello".to_string()
+    fn insert_user(&mut self, user: User) -> String {
+        let user_id = user.id.clone();
+        self.users.insert(user_id.clone(), user);
+        user_id
+    }
+    fn insert_message(&mut self, message: String, user_id: &str) -> () {
+        let user = self.users.get(user_id);
+        match user {
+            None => {}
+            Some(user) => {
+                self.messages.push(format!("{}: {}", user.name, message));
+            }
+        }
     }
 }
 
 #[derive(Clone)]
 struct NitramResource {
-    db: MockDB,
+    db: Arc<Mutex<MockDB>>,
+    nitram_inner: Arc<Mutex<NitramInner>>,
 }
 impl FromResources for NitramResource {}
 impl NitramResource {
     fn new() -> Self {
-        Self { db: MockDB {} }
+        let db = Arc::new(Mutex::new(MockDB::default()));
+        let nitram_inner = Arc::new(Mutex::new(NitramInner::default()));
+        Self { db, nitram_inner }
     }
 }
 
@@ -35,26 +73,67 @@ impl NitramResource {
 // Handlers
 // =============================================================================
 
-async fn hello_handler(resource: NitramResource) -> MethodResult<String> {
-    Ok(resource.db.get())
+// We are taking a shortcut here for the sake of the example. In a real-world
+// application, we would send the user an email with a link that would contain
+// an id to look for a token in the DB.
+async fn get_token_handler(
+    resource: NitramResource,
+    params: GetTokenParams,
+) -> MethodResult<String> {
+    let mut db = resource.db.lock().await;
+    let user_id = db.insert_user(User::new(params.user_name));
+    let session = Session::new(user_id, AuthStrategy::EmailLink)
+        .map_err(|_| MethodError::NotAuthenticated)?;
+    let qty = db.users.len();
+    tracing::debug!("Users: {:?}", qty);
+    Ok(session.token)
 }
-nitram_handler!(HelloAPI, String);
+nitram_handler!(GetTokenAPI, GetTokenParams, String, user_name: String);
 
-async fn echo_handler(session: SessionAuthedResource, params: EchoParams) -> MethodResult<String> {
-    Ok(format!("Hello {}: {}", session.user_id, params.msg))
+async fn send_message_handler(
+    resource: NitramResource,
+    session: SessionAuthedResource,
+    params: SendMessageParams,
+) -> MethodResult<()> {
+    let mut db = resource.db.lock().await;
+    db.insert_message(params.message, &session.user_id);
+    Ok(())
 }
-nitram_handler!(EchoAPI, EchoParams, String, msg:String);
+nitram_handler!(SendMessageAPI, SendMessageParams, (), message: String);
 
 async fn authenticate_handler(
-    _resource: NitramResource,
-    _params: AuthenticateParams,
+    resource: NitramResource,
+    session: SessionAnonymResource,
+    params: AuthenticateParams,
 ) -> MethodResult<bool> {
-    Ok(true)
+    let db = resource.db.lock().await;
+    let parsed_token: ParsedToken = parse_token(params.token).map_err(|_| MethodError::Server)?;
+    tracing::debug!("Parsed token: {:?}", parsed_token);
+    match db.users.get(&parsed_token.user_id) {
+        Some(user) => {
+            let user_id = user.id.clone();
+
+            // authenticate nitram session
+            let mut concierge = resource.nitram_inner.lock().await;
+            let new_session = Session::new(user_id, AuthStrategy::EmailLink)
+                .map_err(|_| MethodError::NotAuthenticated)?;
+            let session_id = concierge.add_auth_session(session.session_id, new_session);
+            tracing::debug!(sess = session_id.to_string(), "authenticate handler finish");
+
+            Ok(true)
+        }
+        None => {
+            tracing::debug!("Invalid token. Not surprising since the DB is not persistent. Front-end should clear the token.");
+            Err(MethodError::NotAuthenticated)
+        }
+    }
 }
 nitram_handler!(AuthenticateAPI, AuthenticateParams, bool, token: String);
 
-async fn signal_handler(session: SessionAuthedResource) -> MethodResult<String> {
-    Ok(format!("Hello {}", session.user_id))
+async fn signal_handler(resource: NitramResource) -> MethodResult<Vec<String>> {
+    let db = resource.db.lock().await;
+    tracing::debug!("Messages: {:?}", db.messages);
+    Ok(db.messages.clone())
 }
 // We don't need to export signal types to the front-end, that's why we don't
 // call nitram_handler!(...) here.
@@ -81,9 +160,9 @@ async fn main() -> std::io::Result<()> {
     let resource = NitramResource::new();
     let cb = NitramBuilder::default()
         .add_resource(resource)
-        .add_public_handler("Hello", hello_handler)
         .add_public_handler("Authenticate", authenticate_handler)
-        .add_private_handler("Echo", echo_handler)
+        .add_public_handler("GetToken", get_token_handler)
+        .add_private_handler("SendMessage", send_message_handler)
         .add_signal_handler("Signal", signal_handler);
     let nitram = cb.build(inner_arc);
     HttpServer::new(move || {
