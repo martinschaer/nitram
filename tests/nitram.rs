@@ -5,14 +5,14 @@ mod tests {
     use std::sync::Arc;
     use tokio::sync::Mutex;
     use tracing_test::traced_test;
+    use uuid::Uuid;
 
     use nitram::{
-        auth::{SessionAnonymResource, SessionAuthedResource},
+        auth::{WSSessionAnonymResource, WSSessionAuthedResource},
         error::MethodError,
-        models::{AuthStrategy, Session},
+        models::{AuthStrategy, DBSession},
         FromResources, IntoParams, Nitram, NitramBuilder,
     };
-    use uuid::Uuid;
 
     #[derive(Clone)]
     pub struct ModelManager {}
@@ -26,7 +26,7 @@ mod tests {
 
     async fn mock_handler(
         _mm: ModelManager,
-        _session: SessionAnonymResource,
+        _session: WSSessionAnonymResource,
         params: MockParams,
     ) -> Result<String, MethodError> {
         Ok(params.code)
@@ -34,7 +34,7 @@ mod tests {
 
     async fn mock_private_handler(
         _mm: ModelManager,
-        _session: SessionAuthedResource,
+        _session: WSSessionAuthedResource,
         params: MockParams,
     ) -> Result<String, MethodError> {
         if params.code == "return error" {
@@ -48,8 +48,8 @@ mod tests {
 
     struct Context {
         nitram: Nitram,
-        anonym: Uuid,
-        authed: Uuid,
+        anonym_ws_sess_id: Uuid,
+        ws_sess_id: Uuid,
     }
 
     async fn prepare() -> Context {
@@ -64,14 +64,14 @@ mod tests {
         let nitram = cb.build(inner_arc);
 
         let mut nitram_inner = inner_arc_clone.lock().await;
-        let anonym = nitram_inner.add_anonym_session();
-        let session = Session::new("fake_user", AuthStrategy::EmailLink).unwrap();
-        let authed = Uuid::new_v4();
-        let authed = nitram_inner.add_auth_session(authed, session);
+        let anonym = nitram_inner.add_anonym_ws_session();
+        let authed = nitram_inner.add_anonym_ws_session();
+        let db_session = DBSession::new("fake_user", AuthStrategy::EmailLink).unwrap();
+        nitram_inner.auth_ws_session(authed, db_session);
         Context {
             nitram,
-            anonym,
-            authed,
+            anonym_ws_sess_id: anonym,
+            ws_sess_id: authed,
         }
     }
 
@@ -92,7 +92,7 @@ mod tests {
             "response": "hello",
             "ok": true
         });
-        let response = ctx.nitram.send(req.to_string(), &ctx.anonym).await;
+        let response = ctx.nitram.send(req.to_string(), &ctx.ws_sess_id).await;
         let parsed = serde_json::from_str::<serde_json::Value>(&response).unwrap();
         assert_eq!(parsed, res);
         Ok(())
@@ -115,7 +115,7 @@ mod tests {
             "response": "HELLO",
             "ok": true
         });
-        let response = ctx.nitram.send(req.to_string(), &ctx.authed).await;
+        let response = ctx.nitram.send(req.to_string(), &ctx.ws_sess_id).await;
         let parsed = serde_json::from_str::<serde_json::Value>(&response).unwrap();
         assert_eq!(parsed, res);
         Ok(())
@@ -138,7 +138,10 @@ mod tests {
             "response": "(~ not authorized ~)",
             "ok": false
         });
-        let response = ctx.nitram.send(req.to_string(), &ctx.anonym).await;
+        let response = ctx
+            .nitram
+            .send(req.to_string(), &ctx.anonym_ws_sess_id)
+            .await;
         let parsed = serde_json::from_str::<serde_json::Value>(&response).unwrap();
         assert_eq!(parsed, res);
         Ok(())
@@ -161,7 +164,7 @@ mod tests {
             "response": "(~ server error ~)",
             "ok": false
         });
-        let response = ctx.nitram.send(req.to_string(), &ctx.authed).await;
+        let response = ctx.nitram.send(req.to_string(), &ctx.ws_sess_id).await;
         let parsed = serde_json::from_str::<serde_json::Value>(&response).unwrap();
         assert_eq!(parsed, res);
         Ok(())
@@ -184,7 +187,7 @@ mod tests {
             "response": "(~ bad request ~)",
             "ok": false
         });
-        let response = ctx.nitram.send(req.to_string(), &ctx.anonym).await;
+        let response = ctx.nitram.send(req.to_string(), &ctx.ws_sess_id).await;
         let parsed = serde_json::from_str::<serde_json::Value>(&response).unwrap();
         assert_eq!(parsed, res);
         Ok(())

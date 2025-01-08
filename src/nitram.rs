@@ -5,34 +5,34 @@ use std::{collections::BTreeMap, sync::Arc};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-use crate::auth::{NitramSession, SessionAnonymResource, SessionAuthedResource};
+use crate::auth::{NitramSession, WSSessionAnonymResource, WSSessionAuthedResource};
 use crate::error::{Error, MethodError, Result};
 use crate::messages::{NitramRequest, NitramResponse, NitramSignal};
-use crate::models::Session;
+use crate::models::DBSession;
 use crate::nice::{Nice, NiceMessage};
 
 pub struct NitramInner {
-    sessions: BTreeMap<Uuid, NitramSession>,
+    ws_sessions: BTreeMap<Uuid, NitramSession>,
 }
 
 impl Default for NitramInner {
     fn default() -> Self {
         NitramInner {
-            sessions: BTreeMap::new(),
+            ws_sessions: BTreeMap::new(),
         }
     }
 }
 
 impl NitramInner {
-    pub fn add_anonym_session(&mut self) -> Uuid {
+    pub fn add_anonym_ws_session(&mut self) -> Uuid {
         let id = Uuid::new_v4();
-        self.sessions.insert(id, NitramSession::Anonymous);
+        self.ws_sessions.insert(id, NitramSession::Anonymous);
         id
     }
-    pub fn add_auth_session(&mut self, session_id: Uuid, session: Session) -> Uuid {
-        self.sessions
-            .insert(session_id, NitramSession::Authenticated(session));
-        session_id
+    pub fn auth_ws_session(&mut self, ws_session_id: Uuid, db_session: DBSession) -> () {
+        self.ws_sessions
+            .insert(ws_session_id, NitramSession::Authenticated(db_session));
+        tracing::debug!("auth_ws_session sessions: {:?}", self.ws_sessions);
     }
 }
 
@@ -69,29 +69,32 @@ impl Nitram {
         }
     }
 
-    pub async fn insert(&self) -> (Uuid, usize) {
+    pub async fn insert(&self) -> Uuid {
         let uuid = Uuid::new_v4();
-        let mut sessions = self.inner.lock().await;
-        sessions.sessions.insert(uuid, NitramSession::Anonymous);
-        let count = sessions.sessions.len();
-        (uuid, count)
+        let mut inner = self.inner.lock().await;
+        inner.ws_sessions.insert(uuid, NitramSession::Anonymous);
+        let count = inner.ws_sessions.len();
+        tracing::info!(sess = uuid.to_string(), count = count, "Inserted session");
+        uuid
     }
 
-    pub async fn remove(&self, session_id: &Uuid) {
-        let mut sessions = self.inner.lock().await;
-        let removed = sessions.sessions.remove(session_id);
-        let count = sessions.sessions.len();
-        tracing::debug!(
-            sess = format!("{:?}", removed),
+    pub async fn remove(&self, ws_session_id: &Uuid) {
+        let mut inner = self.inner.lock().await;
+        let removed = inner.ws_sessions.remove(ws_session_id);
+        let count = inner.ws_sessions.len();
+        tracing::info!(
+            sess = ws_session_id.to_string(),
+            kind = format!("{:?}", removed),
             remaining = count,
-            "Removed"
+            "Removed session"
         );
     }
 
-    async fn is_auth(&self, session_id: &Uuid) -> Result<crate::models::Session> {
+    async fn is_auth(&self, ws_session_id: &Uuid) -> Result<DBSession> {
         let inner = self.inner.lock().await;
-        match inner.sessions.get(session_id) {
-            Some(NitramSession::Authenticated(session)) => Ok(session.clone()),
+        tracing::debug!("WS sessions: {:?}", inner.ws_sessions);
+        match inner.ws_sessions.get(ws_session_id) {
+            Some(NitramSession::Authenticated(db_session)) => Ok(db_session.clone()),
             Some(NitramSession::Anonymous) => Err(Error::NotAuthorized),
             _ => Err(Error::NotAuthenticated),
         }
@@ -99,7 +102,7 @@ impl Nitram {
 
     async fn handle(
         &self,
-        session_id: &Uuid,
+        ws_session_id: &Uuid,
         msg: impl Into<String>,
         params: Value,
     ) -> Result<Value> {
@@ -116,8 +119,8 @@ impl Nitram {
         .try_into()?;
 
         let result = if is_public {
-            let session_resource = SessionAnonymResource {
-                session_id: session_id.clone(),
+            let session_resource = WSSessionAnonymResource {
+                ws_session_id: ws_session_id.clone(),
             };
             let rpc_resources = Resources::builder().append(session_resource).build();
             self.rpc_router_public
@@ -126,9 +129,9 @@ impl Nitram {
                 .map(|r| r.value)
                 .map_err(|e| e.into())
         } else if is_private {
-            let session = self.is_auth(session_id).await?;
-            let session_resource = SessionAuthedResource {
-                user_id: session.user_id,
+            let db_session = self.is_auth(ws_session_id).await?;
+            let session_resource = WSSessionAuthedResource {
+                user_id: db_session.user_id,
             };
             let rpc_resources = Resources::builder().append(session_resource).build();
             self.rpc_router_private
@@ -145,14 +148,14 @@ impl Nitram {
         result
     }
 
-    pub async fn send(&self, payload: impl Into<ByteString>, session_id: &Uuid) -> String {
+    pub async fn send(&self, payload: impl Into<ByteString>, ws_session_id: &Uuid) -> String {
         let parsed = serde_json::from_str::<NitramRequest>(&payload.into());
         let response = match parsed {
             Ok(req) => {
                 let id = req.id;
                 let method = req.method;
                 let params = req.params;
-                let res = match self.handle(session_id, &method, params).await {
+                let res = match self.handle(ws_session_id, &method, params).await {
                     Ok(res) => NitramResponse {
                         id,
                         response: res,
@@ -226,12 +229,12 @@ impl Nitram {
         serde_json::to_string(&response).unwrap_or_default()
     }
 
-    pub async fn get_signals_for_session(&self, session_id: &Uuid) -> Vec<NitramSignal> {
+    pub async fn get_signals_for_session(&self, ws_session_id: &Uuid) -> Vec<NitramSignal> {
         let mut signals: Vec<NitramSignal> = vec![];
         let inner = self.inner.lock().await;
-        let session = inner.sessions.get(session_id);
+        let session = inner.ws_sessions.get(ws_session_id);
         if let Some(session) = session {
-            if let NitramSession::Authenticated(session) = session {
+            if let NitramSession::Authenticated(db_session) = session {
                 // Call registered signal handlers
                 for signal_handler_name in &self.registered_signal_handlers {
                     let rpc_request = Request {
@@ -239,8 +242,8 @@ impl Nitram {
                         method: signal_handler_name.clone(),
                         params: None,
                     };
-                    let session_resource = SessionAuthedResource {
-                        user_id: session.user_id.clone(),
+                    let session_resource = WSSessionAuthedResource {
+                        user_id: db_session.user_id.clone(),
                     };
                     let rpc_resources = Resources::builder().append(session_resource).build();
 

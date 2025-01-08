@@ -1,15 +1,5 @@
 use actix_files::NamedFile;
 use actix_web::{middleware::Logger, web, App, HttpServer};
-use nitram::auth::parse_token;
-use nitram::auth::SessionAnonymResource;
-use nitram::error::MethodError;
-use nitram::models::AuthStrategy;
-use nitram::models::ParsedToken;
-use nitram::models::Session;
-use nitram::FromResources;
-use nitram::IntoParams;
-use nitram::NitramInner;
-use nitram::{auth::SessionAuthedResource, error::MethodResult, nitram_handler, ws, NitramBuilder};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -18,6 +8,13 @@ use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
 use ts_rs::TS;
 use uuid::Uuid;
+
+use nitram::{
+    auth::{parse_token, WSSessionAnonymResource, WSSessionAuthedResource},
+    error::{MethodError, MethodResult},
+    models::{AuthStrategy, DBSession, ParsedToken},
+    nitram_handler, ws, FromResources, IntoParams, NitramBuilder, NitramInner,
+};
 
 #[derive(Clone)]
 struct User {
@@ -62,9 +59,9 @@ struct NitramResource {
 }
 impl FromResources for NitramResource {}
 impl NitramResource {
-    fn new() -> Self {
+    fn new(nitram_inner: Arc<Mutex<NitramInner>>) -> Self {
         let db = Arc::new(Mutex::new(MockDB::default()));
-        let nitram_inner = Arc::new(Mutex::new(NitramInner::default()));
+        // let nitram_inner = Arc::new(Mutex::new(NitramInner::default()));
         Self { db, nitram_inner }
     }
 }
@@ -82,17 +79,17 @@ async fn get_token_handler(
 ) -> MethodResult<String> {
     let mut db = resource.db.lock().await;
     let user_id = db.insert_user(User::new(params.user_name));
-    let session = Session::new(user_id, AuthStrategy::EmailLink)
-        .map_err(|_| MethodError::NotAuthenticated)?;
+    let db_session =
+        DBSession::new(&user_id, AuthStrategy::EmailLink).map_err(|_| MethodError::Server)?;
     let qty = db.users.len();
     tracing::debug!("Users: {:?}", qty);
-    Ok(session.token)
+    Ok(db_session.token)
 }
 nitram_handler!(GetTokenAPI, GetTokenParams, String, user_name: String);
 
 async fn send_message_handler(
     resource: NitramResource,
-    session: SessionAuthedResource,
+    session: WSSessionAuthedResource,
     params: SendMessageParams,
 ) -> MethodResult<()> {
     let mut db = resource.db.lock().await;
@@ -103,22 +100,27 @@ nitram_handler!(SendMessageAPI, SendMessageParams, (), message: String);
 
 async fn authenticate_handler(
     resource: NitramResource,
-    session: SessionAnonymResource,
+    anonym_session: WSSessionAnonymResource,
     params: AuthenticateParams,
 ) -> MethodResult<bool> {
     let db = resource.db.lock().await;
-    let parsed_token: ParsedToken = parse_token(params.token).map_err(|_| MethodError::Server)?;
+    let token = params.token.clone();
+    let parsed_token: ParsedToken = parse_token(&token).map_err(|_| MethodError::Server)?;
     tracing::debug!("Parsed token: {:?}", parsed_token);
     match db.users.get(&parsed_token.user_id) {
         Some(user) => {
             let user_id = user.id.clone();
 
             // authenticate nitram session
-            let mut concierge = resource.nitram_inner.lock().await;
-            let new_session = Session::new(user_id, AuthStrategy::EmailLink)
-                .map_err(|_| MethodError::NotAuthenticated)?;
-            let session_id = concierge.add_auth_session(session.session_id, new_session);
-            tracing::debug!(sess = session_id.to_string(), "authenticate handler finish");
+            let mut nitram = resource.nitram_inner.lock().await;
+            let db_session = DBSession {
+                id: parsed_token.db_session_id,
+                user_id: user_id.clone(),
+                strategy: AuthStrategy::EmailLink,
+                token,
+                expires_at: parsed_token.expires_at,
+            };
+            nitram.auth_ws_session(anonym_session.ws_session_id, db_session);
 
             Ok(true)
         }
@@ -157,7 +159,7 @@ async fn main() -> std::io::Result<()> {
         .init();
     let inner = NitramInner::default();
     let inner_arc = Arc::new(Mutex::new(inner));
-    let resource = NitramResource::new();
+    let resource = NitramResource::new(inner_arc.clone());
     let cb = NitramBuilder::default()
         .add_resource(resource)
         .add_public_handler("Authenticate", authenticate_handler)

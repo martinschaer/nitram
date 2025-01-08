@@ -19,17 +19,11 @@ pub async fn handler(
     // increase the maximum allowed frame size to 128KiB and aggregate continuation frames
     let mut stream = stream.max_frame_size(128 * 1024).aggregate_continuations();
 
-    let (session_id, count) = nitram.insert().await;
-    tracing::info!(
-        sess = session_id.to_string(),
-        count = count,
-        "Inserted session"
-    );
+    let session_id = nitram.insert().await;
 
     let alive = Arc::new(Mutex::new(Instant::now()));
-
-    let mut session2 = session.clone();
     let alive2 = alive.clone();
+    let mut session2 = session.clone();
     let nitram_for_loop = nitram.clone();
     actix_web::rt::spawn(async move {
         let mut interval = actix_web::rt::time::interval(Duration::from_secs(5));

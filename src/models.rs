@@ -1,6 +1,5 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use crate::auth::generate_token;
 use crate::error::Result;
@@ -13,25 +12,29 @@ pub enum AuthStrategy {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ParsedToken {
     pub expires_at: DateTime<Utc>,
-    pub session_id: Uuid,
+    pub db_session_id: DBSessionId,
     pub user_id: String,
 }
 
+// TODO(6cd5): make DBSessionId a struct with inner types that can be String or
+// Uuid, with a new() method, and implementing Serialize and Deserialize
+pub type DBSessionId = String;
+
 #[derive(Clone, Serialize, Deserialize)]
-pub struct Session {
-    pub id: Uuid,
+pub struct DBSession {
+    pub id: DBSessionId,
     pub user_id: String,
     pub strategy: AuthStrategy,
     pub token: String,
     pub expires_at: DateTime<Utc>,
 }
 
-impl Session {
+impl DBSession {
     pub fn new(user_id: impl Into<String>, strategy: AuthStrategy) -> Result<Self> {
         let user_id = user_id.into();
-        let (uuid, expires_at, encoded_token) = generate_token(&user_id, &strategy)?;
+        let (id, expires_at, encoded_token) = generate_token(&user_id, &strategy)?;
         Ok(Self {
-            id: uuid,
+            id,
             user_id,
             strategy,
             token: encoded_token,
