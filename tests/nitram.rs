@@ -5,14 +5,14 @@ mod tests {
     use std::sync::Arc;
     use tokio::sync::Mutex;
     use tracing_test::traced_test;
-
-    use concierge::{
-        auth::{SessionAnonymResource, SessionAuthedResource},
-        error::MethodError,
-        models::{AuthStrategy, Session},
-        Concierge, ConciergeBuilder, FromResources, IntoParams,
-    };
     use uuid::Uuid;
+
+    use nitram::{
+        auth::{WSSessionAnonymResource, WSSessionAuthedResource},
+        error::MethodError,
+        models::{AuthStrategy, DBSession},
+        FromResources, IntoParams, Nitram, NitramBuilder,
+    };
 
     #[derive(Clone)]
     pub struct ModelManager {}
@@ -26,7 +26,7 @@ mod tests {
 
     async fn mock_handler(
         _mm: ModelManager,
-        _session: SessionAnonymResource,
+        _session: WSSessionAnonymResource,
         params: MockParams,
     ) -> Result<String, MethodError> {
         Ok(params.code)
@@ -34,7 +34,7 @@ mod tests {
 
     async fn mock_private_handler(
         _mm: ModelManager,
-        _session: SessionAuthedResource,
+        _session: WSSessionAuthedResource,
         params: MockParams,
     ) -> Result<String, MethodError> {
         if params.code == "return error" {
@@ -43,35 +43,35 @@ mod tests {
         Ok(params.code.to_uppercase())
     }
 
-    // concierge_api!(MockAPI, MockParams, String);
-    // concierge_api!(MockPrivateAPI, MockParams, String);
+    // nitram_api!(MockAPI, MockParams, String);
+    // nitram_api!(MockPrivateAPI, MockParams, String);
 
     struct Context {
-        concierge: Concierge,
-        anonym: Uuid,
-        authed: Uuid,
+        nitram: Nitram,
+        anonym_ws_sess_id: Uuid,
+        ws_sess_id: Uuid,
     }
 
     async fn prepare() -> Context {
-        let inner = concierge::ConciergeInner::default();
+        let inner = nitram::NitramInner::default();
         let inner_arc = Arc::new(Mutex::new(inner));
         let inner_arc_clone = Arc::clone(&inner_arc);
         let mm = ModelManager {};
-        let cb = ConciergeBuilder::default()
+        let cb = NitramBuilder::default()
             .add_resource(mm)
             .add_public_handler("Mock", mock_handler)
             .add_private_handler("MockPrivate", mock_private_handler);
-        let concierge = cb.build(inner_arc);
+        let nitram = cb.build(inner_arc);
 
-        let mut concierge_inner = inner_arc_clone.lock().await;
-        let anonym = concierge_inner.add_anonym_session();
-        let session = Session::new("fake_user", AuthStrategy::EmailLink).unwrap();
-        let authed = Uuid::new_v4();
-        let authed = concierge_inner.add_auth_session(authed, session);
+        let mut nitram_inner = inner_arc_clone.lock().await;
+        let anonym = nitram_inner.add_anonym_ws_session();
+        let authed = nitram_inner.add_anonym_ws_session();
+        let db_session = DBSession::new("fake_user", AuthStrategy::EmailLink).unwrap();
+        nitram_inner.auth_ws_session(authed, db_session);
         Context {
-            concierge,
-            anonym,
-            authed,
+            nitram,
+            anonym_ws_sess_id: anonym,
+            ws_sess_id: authed,
         }
     }
 
@@ -92,7 +92,7 @@ mod tests {
             "response": "hello",
             "ok": true
         });
-        let response = ctx.concierge.send(req.to_string(), &ctx.anonym).await;
+        let response = ctx.nitram.send(req.to_string(), &ctx.ws_sess_id).await;
         let parsed = serde_json::from_str::<serde_json::Value>(&response).unwrap();
         assert_eq!(parsed, res);
         Ok(())
@@ -115,7 +115,7 @@ mod tests {
             "response": "HELLO",
             "ok": true
         });
-        let response = ctx.concierge.send(req.to_string(), &ctx.authed).await;
+        let response = ctx.nitram.send(req.to_string(), &ctx.ws_sess_id).await;
         let parsed = serde_json::from_str::<serde_json::Value>(&response).unwrap();
         assert_eq!(parsed, res);
         Ok(())
@@ -138,7 +138,10 @@ mod tests {
             "response": "(~ not authorized ~)",
             "ok": false
         });
-        let response = ctx.concierge.send(req.to_string(), &ctx.anonym).await;
+        let response = ctx
+            .nitram
+            .send(req.to_string(), &ctx.anonym_ws_sess_id)
+            .await;
         let parsed = serde_json::from_str::<serde_json::Value>(&response).unwrap();
         assert_eq!(parsed, res);
         Ok(())
@@ -161,7 +164,7 @@ mod tests {
             "response": "(~ server error ~)",
             "ok": false
         });
-        let response = ctx.concierge.send(req.to_string(), &ctx.authed).await;
+        let response = ctx.nitram.send(req.to_string(), &ctx.ws_sess_id).await;
         let parsed = serde_json::from_str::<serde_json::Value>(&response).unwrap();
         assert_eq!(parsed, res);
         Ok(())
@@ -184,7 +187,7 @@ mod tests {
             "response": "(~ bad request ~)",
             "ok": false
         });
-        let response = ctx.concierge.send(req.to_string(), &ctx.anonym).await;
+        let response = ctx.nitram.send(req.to_string(), &ctx.ws_sess_id).await;
         let parsed = serde_json::from_str::<serde_json::Value>(&response).unwrap();
         assert_eq!(parsed, res);
         Ok(())

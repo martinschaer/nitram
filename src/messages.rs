@@ -4,7 +4,7 @@ use ts_rs::TS;
 
 #[derive(Serialize, Deserialize, TS)]
 #[ts(export)]
-pub struct ConciergeRequest {
+pub struct NitramRequest {
     pub id: String,
     pub method: String,
     pub params: Value,
@@ -12,14 +12,14 @@ pub struct ConciergeRequest {
 
 #[derive(Serialize, TS)]
 #[ts(export)]
-pub struct ConciergeResponse {
+pub struct NitramResponse {
     pub id: String,
     pub method: String,
     pub response: Value,
     pub ok: bool,
 }
 
-impl ConciergeResponse {
+impl NitramResponse {
     pub fn error(s: impl Into<String>) -> Self {
         Self {
             id: "_err".to_string(),
@@ -32,7 +32,7 @@ impl ConciergeResponse {
 
 #[derive(Serialize, TS)]
 #[ts(export)]
-pub struct ConciergeSignal {
+pub struct NitramSignal {
     pub signal: String,
     pub payload: Value,
 }

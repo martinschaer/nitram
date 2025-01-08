@@ -1,7 +1,7 @@
-import { ConciergeResponse } from "concierge/ConciergeResponse";
-import { ConciergeSignal } from "concierge/ConciergeSignal";
-import { ConciergeRequest } from "concierge/ConciergeRequest";
-import { JsonValue } from "concierge/serde_json/JsonValue";
+import { NitramResponse } from "nitram/NitramResponse";
+import { NitramSignal } from "nitram/NitramSignal";
+import { NitramRequest } from "nitram/NitramRequest";
+import { JsonValue } from "nitram/serde_json/JsonValue";
 
 type EventHandler = (data: any) => void;
 type SignalHandler = (data: any) => void;
@@ -36,7 +36,7 @@ export class Server<AuthenticateAPI extends { i: JsonValue; o: JsonValue }> {
   private errorHandlers: Map<string, (data: any) => void> = new Map();
   private eventHandlers: Map<string, EventHandler[]> = new Map();
   private signalHandlers: Map<string, SignalHandler[]> = new Map();
-  private queue: (ConciergeRequest & {
+  private queue: (NitramRequest & {
     resolve: (val: any) => any;
     reject: () => any;
   })[] = [];
@@ -57,7 +57,7 @@ export class Server<AuthenticateAPI extends { i: JsonValue; o: JsonValue }> {
       // - null
     } else if (data.hasOwnProperty("signal")) {
       // - signals
-      const signalData = data as ConciergeSignal;
+      const signalData = data as NitramSignal;
 
       // -- find registered signal handlers
       const handlers = this.signalHandlers.get(signalData.signal);
@@ -77,7 +77,7 @@ export class Server<AuthenticateAPI extends { i: JsonValue; o: JsonValue }> {
         data.hasOwnProperty("ok") &&
         data.hasOwnProperty("response")
       ) {
-        const messageData = data as unknown as ConciergeResponse;
+        const messageData = data as unknown as NitramResponse;
         if (messageData.ok) {
           let handler = this.handlers.get(messageData.method);
           if (handler) handler(messageData.response);
@@ -174,6 +174,7 @@ export class Server<AuthenticateAPI extends { i: JsonValue; o: JsonValue }> {
   }
 
   async auth(token: string): Promise<boolean> {
+    localStorage.setItem("token", token);
     return this.request<AuthenticateAPI>({
       id: "fake",
       method: "Authenticate",
@@ -187,13 +188,16 @@ export class Server<AuthenticateAPI extends { i: JsonValue; o: JsonValue }> {
       },
       (e) => {
         console.error(e);
-        this.is_authenticated = false;
-        this.triggerEvent("auth", false);
-        // TODO: should we?
-        // localStorage.getItem("token");
+        this.logout();
         return false;
       },
     );
+  }
+
+  logout() {
+    this.is_authenticated = false;
+    this.triggerEvent("auth", false);
+    localStorage.removeItem("token");
   }
 
   // ---------------------------------------------------------------------------
@@ -257,7 +261,7 @@ export class Server<AuthenticateAPI extends { i: JsonValue; o: JsonValue }> {
   // ---------------------------------------------------------------------------
   // -- Request
   async request<T extends { i: JsonValue; o: JsonValue }>(
-    payload: ConciergeRequest & { params: T["i"] },
+    payload: NitramRequest & { params: T["i"] },
   ) {
     let promise = new Promise<T["o"]>((resolve, reject) => {
       this.registerHandler(

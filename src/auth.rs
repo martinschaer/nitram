@@ -7,31 +7,32 @@ use uuid::Uuid;
 
 use crate::{
     error::{Error, Result},
-    models::{AuthStrategy, ParsedToken, Session},
+    models::{AuthStrategy, DBSession, DBSessionId, ParsedToken},
 };
 
 #[derive(Clone, RpcResource)]
-pub struct SessionAnonymResource {
-    pub session_id: Uuid,
+pub struct WSSessionAnonymResource {
+    pub ws_session_id: Uuid,
 }
 
 #[derive(Clone, RpcResource)]
-pub struct SessionAuthedResource {
+pub struct WSSessionAuthedResource {
     pub user_id: String,
+    // db_session_id: Uuid,
 }
 
 #[derive(Clone)]
-pub enum ConciergeSession {
+pub enum NitramSession {
     Anonymous,
-    Authenticated(Session),
+    Authenticated(DBSession),
 }
 
-impl fmt::Debug for ConciergeSession {
+impl fmt::Debug for NitramSession {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ConciergeSession::Anonymous => write!(f, "Anonymous"),
-            ConciergeSession::Authenticated(session) => {
-                write!(f, "Authenticated({})", session.id)
+            NitramSession::Anonymous => write!(f, "Anonymous"),
+            NitramSession::Authenticated(db_session) => {
+                write!(f, "Authenticated({})", db_session.id)
             }
         }
     }
@@ -40,20 +41,22 @@ impl fmt::Debug for ConciergeSession {
 pub fn generate_token(
     user_id: impl Into<String>,
     strategy: &AuthStrategy,
-) -> Result<(Uuid, DateTime<Utc>, String)> {
-    let uuid = Uuid::new_v4();
+) -> Result<(DBSessionId, DateTime<Utc>, String)> {
+    // TODO(6cd5): use new method when implemented
+    // None => DBSessionId::new(),
+    let id = Uuid::new_v4().to_string();
     let now = Utc::now();
     let expires_at = now + Duration::new(7 * 24 * 60 * 60, 0);
     let token = match strategy {
         AuthStrategy::EmailLink => serde_json::to_string(&ParsedToken {
             expires_at: expires_at.into(),
-            session_id: uuid.clone(),
+            db_session_id: id.clone(),
             user_id: user_id.into(),
         }),
     }
     .map_err(|e| Error::TokenError(e.to_string()))?;
     let encoded_token = BASE64_STANDARD.encode(token);
-    Ok((uuid, expires_at.into(), encoded_token))
+    Ok((id, expires_at.into(), encoded_token))
 }
 
 pub fn parse_token(token: impl Into<String>) -> Result<ParsedToken> {

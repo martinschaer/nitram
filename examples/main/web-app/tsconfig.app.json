@@ -24,7 +24,7 @@
     "noUncheckedSideEffectImports": true,
 
     "paths": {
-      "concierge/*": ["../../bindings/*"]
+      "nitram/*": ["../bindings/*"]
     }
   },
   "include": ["src"]

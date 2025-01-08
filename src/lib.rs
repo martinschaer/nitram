@@ -6,24 +6,24 @@ pub use rpc_router::FromResources;
 pub use rpc_router::IntoParams;
 
 mod builder;
-mod concierge;
 mod messages;
+mod nitram;
 
 pub mod auth;
 pub mod error;
 pub mod models;
 pub mod nice;
 pub mod ws;
-pub use concierge::*;
+pub use nitram::*;
 
-pub use builder::ConciergeBuilder;
+pub use builder::NitramBuilder;
 
 #[derive(TS)]
-#[ts(export, export_to = "Concierge.ts")]
+#[ts(export, export_to = "Nitram.ts")]
 pub struct EmptyParams;
 
 #[macro_export]
-macro_rules! concierge_api {
+macro_rules! nitram_api {
     ( $name:ident, $params_ty:ty, $output_ty:ty ) => {
         #[derive(TS)]
         #[ts(export, export_to = "API/index.ts")]
@@ -35,7 +35,7 @@ macro_rules! concierge_api {
 }
 
 #[macro_export]
-macro_rules! concierge_handler {
+macro_rules! nitram_handler {
     (
         $name:ident,
         $params_ty:ident,
@@ -43,7 +43,7 @@ macro_rules! concierge_handler {
         $( $param_name:ident : $param_ty:ty ),*
     ) => {
         #[derive(Deserialize, Clone, TS)]
-        #[ts(export, export_to = "API/Jobs.ts")]
+        #[ts(export, export_to = "API/Params.ts")]
         pub struct $params_ty {
             $(
                 $param_name: $param_ty,
