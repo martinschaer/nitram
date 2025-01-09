@@ -2,16 +2,16 @@
 import { render } from "solid-js/web";
 
 import "./index.css";
-import App from "./App.tsx";
-import Private from "./Private.tsx";
+import Login from "./Login.tsx";
+import Chat from "./Chat.tsx";
 import { BackendProvider } from "./BackendContext";
 
 const root = document.getElementById("root");
 
 render(
   () => (
-    <BackendProvider publicChildren={<App />}>
-      <Private />
+    <BackendProvider publicChildren={<Login />}>
+      <Chat />
     </BackendProvider>
   ),
   root!,

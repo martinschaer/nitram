@@ -13,26 +13,24 @@ import {
 } from "solid-js";
 
 // -----------------------------------------------------------------------------
+// Nitram bindings
+//
+import { AuthenticateAPI, MessagesAPI } from "nitram/API";
+
+// -----------------------------------------------------------------------------
 // Local imports
 //
 import { Server } from "./lib/nitram";
-// import { signalsStore } from "./stores/signals";
-import { AuthenticateAPI } from "nitram/API";
+import { setMessages } from "./store";
 
 // -----------------------------------------------------------------------------
-// Utils
+// Handlers
 //
-const signalsHandler = (data: any) => {
-  if (Array.isArray(data)) {
-    for (let _d of data) {
-      if (Object.hasOwn(_d, "progress") && Object.hasOwn(_d, "id")) {
-        console.log(_d);
-      } else {
-        console.error("Invalid job data", _d);
-      }
-    }
+const messagesHandler = (payload: MessagesAPI["o"]) => {
+  if (Array.isArray(payload)) {
+    setMessages(payload);
   } else {
-    console.error("Invalid job data", data);
+    console.error("Payload type is different than expected", payload);
   }
 };
 
@@ -64,14 +62,14 @@ export const BackendProvider: ParentComponent<{
   // -- Lifecycle
   onMount(() => {
     const _server = server();
-    _server.addSignalHandler("Signal", signalsHandler);
+    _server.addSignalHandler("Messages", messagesHandler);
     _server.addEventHandler("(~ not authenticated ~)", pleaseLogInHandler);
     _server.addEventHandler("auth", isAuthenticatedSet);
   });
 
   onCleanup(() => {
     const _server = server();
-    _server.removeSignalHandler("Signal", signalsHandler);
+    _server.removeSignalHandler("Messages", messagesHandler);
     _server.removeEventHandler("(~ not authenticated ~)", pleaseLogInHandler);
     _server.removeEventHandler("auth", isAuthenticatedSet);
     _server.stop();
