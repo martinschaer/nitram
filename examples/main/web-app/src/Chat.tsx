@@ -1,15 +1,30 @@
-import { useContext } from "solid-js";
+import { For, useContext } from "solid-js";
 
-import { BackendContext } from "./BackendContext";
+// -----------------------------------------------------------------------------
+// Nitram bindings
+//
 import { SendMessageAPI } from "nitram/API";
 
-function Private() {
+// -----------------------------------------------------------------------------
+// Local imports
+//
+import { BackendContext } from "./BackendContext";
+import { messages } from "./store";
+
+// =============================================================================
+// Component
+// =============================================================================
+function Chat() {
+  // -- HTML Elements
   let input!: HTMLInputElement;
+
+  // -- Nitram context
   const { server } = useContext(BackendContext) ?? { server: null };
   if (!server) {
     throw new Error("BackendContext not found");
   }
 
+  // -- Callbacks
   const handleLogout = () => {
     server().logout();
   };
@@ -30,17 +45,23 @@ function Private() {
       });
   };
 
+  // -- Render
   return (
     <>
-      <h1>Private</h1>
       <button onClick={handleLogout}>Logout</button>
       <div>
-        <h2>Chat</h2>
+        <h1>Chat</h1>
         <input type="text" ref={(el) => (input = el)} placeholder="Message" />
         <button onClick={handleMethod}>Send</button>
+      </div>
+      <div>
+        <h2>Messages</h2>
+        <ul>
+          <For each={messages}>{(msg, _i) => <li>{msg}</li>}</For>
+        </ul>
       </div>
     </>
   );
 }
 
-export default Private;
+export default Chat;

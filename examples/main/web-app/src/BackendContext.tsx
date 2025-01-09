@@ -13,26 +13,24 @@ import {
 } from "solid-js";
 
 // -----------------------------------------------------------------------------
+// Nitram bindings
+//
+import { AuthenticateAPI } from "nitram/API";
+
+// -----------------------------------------------------------------------------
 // Local imports
 //
 import { Server } from "./lib/nitram";
-// import { signalsStore } from "./stores/signals";
-import { AuthenticateAPI } from "nitram/API";
+import { setMessages } from "./store";
 
 // -----------------------------------------------------------------------------
 // Utils
 //
-const signalsHandler = (data: any) => {
-  if (Array.isArray(data)) {
-    for (let _d of data) {
-      if (Object.hasOwn(_d, "progress") && Object.hasOwn(_d, "id")) {
-        console.log(_d);
-      } else {
-        console.error("Invalid job data", _d);
-      }
-    }
+const signalsHandler = (payload: any) => {
+  if (Array.isArray(payload)) {
+    setMessages(payload);
   } else {
-    console.error("Invalid job data", data);
+    console.error("Signal payload is not an array", payload);
   }
 };
 
