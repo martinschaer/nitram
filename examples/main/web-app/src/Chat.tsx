@@ -9,7 +9,7 @@ import { SendMessageAPI } from "nitram/API";
 // Local imports
 //
 import { BackendContext } from "./BackendContext";
-import { messages } from "./store";
+import { messages, setMessages } from "./store";
 
 // =============================================================================
 // Component
@@ -37,8 +37,9 @@ function Chat() {
         method: "SendMessage",
         params: { message: input.value },
       })
-      .then(() => {
+      .then((messages) => {
         input.value = "";
+        setMessages(messages);
       })
       .finally(() => {
         input.disabled = false;

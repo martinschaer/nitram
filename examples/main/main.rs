@@ -13,7 +13,7 @@ use nitram::{
     auth::{parse_token, WSSessionAnonymResource, WSSessionAuthedResource},
     error::{MethodError, MethodResult},
     models::{AuthStrategy, DBSession, ParsedToken},
-    nitram_handler, ws, FromResources, IntoParams, NitramBuilder, NitramInner,
+    nitram_handler, ws, EmptyParams, FromResources, IntoParams, NitramBuilder, NitramInner,
 };
 
 #[derive(Clone)]
@@ -61,7 +61,6 @@ impl FromResources for NitramResource {}
 impl NitramResource {
     fn new(nitram_inner: Arc<Mutex<NitramInner>>) -> Self {
         let db = Arc::new(Mutex::new(MockDB::default()));
-        // let nitram_inner = Arc::new(Mutex::new(NitramInner::default()));
         Self { db, nitram_inner }
     }
 }
@@ -91,12 +90,12 @@ async fn send_message_handler(
     resource: NitramResource,
     session: WSSessionAuthedResource,
     params: SendMessageParams,
-) -> MethodResult<()> {
+) -> MethodResult<Vec<String>> {
     let mut db = resource.db.lock().await;
     db.insert_message(params.message, &session.user_id);
-    Ok(())
+    Ok(db.messages.clone())
 }
-nitram_handler!(SendMessageAPI, SendMessageParams, (), message: String);
+nitram_handler!(SendMessageAPI, SendMessageParams, Vec<String>, message: String);
 
 async fn authenticate_handler(
     resource: NitramResource,
@@ -132,13 +131,11 @@ async fn authenticate_handler(
 }
 nitram_handler!(AuthenticateAPI, AuthenticateParams, bool, token: String);
 
-async fn signal_handler(resource: NitramResource) -> MethodResult<Vec<String>> {
+async fn messages_handler(resource: NitramResource) -> MethodResult<Vec<String>> {
     let db = resource.db.lock().await;
-    tracing::debug!("Messages: {:?}", db.messages);
     Ok(db.messages.clone())
 }
-// We don't need to export signal types to the front-end, that's why we don't
-// call nitram_handler!(...) here.
+nitram_handler!(MessagesAPI, Vec<String>);
 
 // =============================================================================
 // Server
@@ -165,7 +162,7 @@ async fn main() -> std::io::Result<()> {
         .add_public_handler("Authenticate", authenticate_handler)
         .add_public_handler("GetToken", get_token_handler)
         .add_private_handler("SendMessage", send_message_handler)
-        .add_signal_handler("Signal", signal_handler);
+        .add_signal_handler("Messages", messages_handler);
     let nitram = cb.build(inner_arc);
     HttpServer::new(move || {
         App::new()
