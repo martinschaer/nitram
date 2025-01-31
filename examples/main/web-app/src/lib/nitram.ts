@@ -1,3 +1,5 @@
+import { AuthenticateAPI } from "nitram/API";
+
 import { NitramResponse } from "nitram/NitramResponse";
 import { NitramSignal } from "nitram/NitramSignal";
 import { NitramRequest } from "nitram/NitramRequest";
@@ -24,7 +26,7 @@ function wsStateToString(state: number) {
 // =============================================================================
 // Server
 // =============================================================================
-export class Server<AuthenticateAPI extends { i: JsonValue; o: JsonValue }> {
+export class Server {
   // -- Public
   is_authenticated = false;
 
