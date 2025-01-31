@@ -84,7 +84,13 @@ async fn get_token_handler(
     tracing::debug!("Users: {:?}", qty);
     Ok(db_session.token)
 }
-nitram_handler!(GetTokenAPI, GetTokenParams, String, user_name: String);
+nitram_handler!(
+    GetTokenAPI,    // Method name
+    GetTokenParams, // Params type
+    String,         // Return type
+    // Params
+    user_name: String
+);
 
 async fn send_message_handler(
     resource: NitramResource,
@@ -95,7 +101,13 @@ async fn send_message_handler(
     db.insert_message(params.message, &session.user_id);
     Ok(db.messages.clone())
 }
-nitram_handler!(SendMessageAPI, SendMessageParams, Vec<String>, message: String);
+nitram_handler!(
+    SendMessageAPI,    // Method name
+    SendMessageParams, // Params type
+    Vec<String>,       // Return type
+    // Params
+    message: String
+);
 
 async fn authenticate_handler(
     resource: NitramResource,
@@ -129,13 +141,23 @@ async fn authenticate_handler(
         }
     }
 }
-nitram_handler!(AuthenticateAPI, AuthenticateParams, bool, token: String);
+nitram_handler!(
+    AuthenticateAPI,    // Method name
+    AuthenticateParams, // Params type
+    bool,               // Return type
+    // Params
+    token: String
+);
 
 async fn messages_handler(resource: NitramResource) -> MethodResult<Vec<String>> {
     let db = resource.db.lock().await;
     Ok(db.messages.clone())
 }
-nitram_handler!(MessagesAPI, Vec<String>);
+nitram_handler!(
+    MessagesAPI, // Method name
+    // Empty params type
+    Vec<String> // Return type
+);
 
 // =============================================================================
 // Server
