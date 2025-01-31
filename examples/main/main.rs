@@ -1,6 +1,6 @@
 use actix_files::NamedFile;
 use actix_web::{middleware::Logger, web, App, HttpServer};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -13,10 +13,11 @@ use nitram::{
     auth::{parse_token, WSSessionAnonymResource, WSSessionAuthedResource},
     error::{MethodError, MethodResult},
     models::{AuthStrategy, DBSession, ParsedToken},
-    nitram_handler, ws, EmptyParams, FromResources, IntoParams, NitramBuilder, NitramInner,
+    nitram_handler, ws, EmptyParams, FromResources, IdParams, IntoParams, NitramBuilder,
+    NitramInner,
 };
 
-#[derive(Clone)]
+#[derive(Clone, Deserialize, Serialize, TS)]
 struct User {
     id: String,
     name: String,
@@ -159,6 +160,19 @@ nitram_handler!(
     Vec<String> // Return type
 );
 
+async fn get_user_handler(resource: NitramResource, params: IdParams) -> MethodResult<User> {
+    let db = resource.db.lock().await;
+    match db.users.get(&params.id) {
+        Some(user) => Ok(user.clone()),
+        None => Err(MethodError::NotFound),
+    }
+}
+nitram_handler!(
+    GetUserAPI, // Method name
+    IdParams,   // Params type
+    User        // Return type
+);
+
 // =============================================================================
 // Server
 // =============================================================================
@@ -184,6 +198,7 @@ async fn main() -> std::io::Result<()> {
         .add_public_handler("Authenticate", authenticate_handler)
         .add_public_handler("GetToken", get_token_handler)
         .add_private_handler("SendMessage", send_message_handler)
+        .add_private_handler("GetUser", get_user_handler)
         .add_signal_handler("Messages", messages_handler);
     let nitram = cb.build(inner_arc);
     HttpServer::new(move || {

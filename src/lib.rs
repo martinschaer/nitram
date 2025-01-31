@@ -1,5 +1,6 @@
 extern crate proc_macro;
 
+use serde::Deserialize;
 use ts_rs::TS;
 
 pub use rpc_router::FromResources;
@@ -21,6 +22,13 @@ pub use builder::NitramBuilder;
 #[derive(TS)]
 #[ts(export, export_to = "Nitram.ts")]
 pub struct EmptyParams;
+
+#[derive(Deserialize, TS)]
+#[ts(export, export_to = "Nitram.ts")]
+pub struct IdParams {
+    pub id: String,
+}
+impl IntoParams for IdParams {}
 
 #[macro_export]
 macro_rules! nitram_api {
@@ -52,7 +60,19 @@ macro_rules! nitram_handler {
 
         impl IntoParams for $params_ty {}
 
-
+        #[derive(TS)]
+        #[ts(export, export_to = "API/index.ts")]
+        struct $name {
+            i: $params_ty,
+            o: $output_ty,
+        }
+    };
+    (
+        $name:ident,
+        $params_ty:ty,
+        $output_ty:ty
+    ) =>
+    {
         #[derive(TS)]
         #[ts(export, export_to = "API/index.ts")]
         struct $name {
