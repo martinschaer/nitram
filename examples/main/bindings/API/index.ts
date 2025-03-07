@@ -2,11 +2,15 @@
 import type { AuthenticateParams } from "./Params";
 import type { EmptyParams } from "../Nitram";
 import type { GetTokenParams } from "./Params";
+import type { IdParams } from "../Nitram";
 import type { SendMessageParams } from "./Params";
+import type { User } from "../User";
 
 export type AuthenticateAPI = { i: AuthenticateParams, o: boolean, };
 
 export type GetTokenAPI = { i: GetTokenParams, o: string, };
+
+export type GetUserAPI = { i: IdParams, o: User, };
 
 export type MessagesAPI = { i: EmptyParams, o: Array<string>, };
 
