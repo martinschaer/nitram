@@ -7,6 +7,10 @@ import { JsonValue } from "nitram/serde_json/JsonValue";
 
 type EventHandler = (data: any) => void;
 type SignalHandler = (data: any) => void;
+type QueueItem = NitramRequest & {
+  resolve: (val: any) => any;
+  reject: () => any;
+};
 
 function wsStateToString(state: number) {
   switch (state) {
@@ -38,10 +42,7 @@ export class Server {
   private errorHandlers: Map<string, (data: any) => void> = new Map();
   private eventHandlers: Map<string, EventHandler[]> = new Map();
   private signalHandlers: Map<string, SignalHandler[]> = new Map();
-  private queue: (NitramRequest & {
-    resolve: (val: any) => any;
-    reject: () => any;
-  })[] = [];
+  private queue: QueueItem[] = [];
 
   // -- Constructor
   constructor() {
@@ -294,14 +295,18 @@ export class Server {
       }
     } else {
       console.log("Queueing request", payload);
-      const { promise, resolve, reject } = Promise.withResolvers<T["o"]>();
-      this.queue.push({
+      let item: QueueItem = {
         id: payload.id,
         method: payload.method,
         params: payload.params,
-        resolve,
-        reject,
+        resolve: () => {},
+        reject: () => {},
+      };
+      const promise = new Promise<T["o"]>((res, rej) => {
+        item.resolve = res;
+        item.reject = rej;
       });
+      this.queue.push(item);
       return promise;
     }
   }
