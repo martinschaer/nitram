@@ -1,8 +1,9 @@
 use base64::prelude::*;
 use chrono::{DateTime, Utc};
 use rpc_router::RpcResource;
-use std::fmt;
+use serde_json::Value;
 use std::time::Duration;
+use std::{collections::HashMap, fmt};
 use uuid::Uuid;
 
 use crate::{
@@ -24,15 +25,35 @@ pub struct WSSessionAuthedResource {
 #[derive(Clone)]
 pub enum NitramSession {
     Anonymous,
-    Authenticated(DBSession),
+    Authenticated {
+        db_session: DBSession,
+        topics_registered: HashMap<String, Value>,
+    },
+}
+
+impl NitramSession {
+    pub fn new(db_session: DBSession) -> Self {
+        NitramSession::Authenticated {
+            db_session,
+            topics_registered: HashMap::new(),
+        }
+    }
 }
 
 impl fmt::Debug for NitramSession {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             NitramSession::Anonymous => write!(f, "Anonymous"),
-            NitramSession::Authenticated(db_session) => {
-                write!(f, "Authenticated({})", db_session.id)
+            NitramSession::Authenticated {
+                db_session,
+                topics_registered,
+            } => {
+                write!(
+                    f,
+                    "Authenticated({},topics={:?})",
+                    db_session.id,
+                    topics_registered.keys().collect::<Vec<&String>>()
+                )
             }
         }
     }

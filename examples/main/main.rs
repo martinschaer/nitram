@@ -13,8 +13,7 @@ use nitram::{
     auth::{parse_token, WSSessionAnonymResource, WSSessionAuthedResource},
     error::{MethodError, MethodResult},
     models::{AuthStrategy, DBSession, ParsedToken},
-    nitram_handler, ws, EmptyParams, FromResources, IdParams, IntoParams, NitramBuilder,
-    NitramInner,
+    nitram_handler, ws, FromResources, IdParams, IntoParams, NitramBuilder, NitramInner,
 };
 
 #[derive(Clone, Deserialize, Serialize, TS)]
@@ -34,7 +33,7 @@ impl User {
 #[derive(Clone, Default)]
 struct MockDB {
     users: HashMap<String, User>,
-    messages: Vec<String>,
+    messages: HashMap<String, Vec<String>>,
 }
 impl MockDB {
     fn insert_user(&mut self, user: User) -> String {
@@ -42,12 +41,21 @@ impl MockDB {
         self.users.insert(user_id.clone(), user);
         user_id
     }
-    fn insert_message(&mut self, message: String, user_id: &str) -> () {
+    fn insert_message(&mut self, channel: &str, message: String, user_id: &str) -> () {
         let user = self.users.get(user_id);
         match user {
             None => {}
             Some(user) => {
-                self.messages.push(format!("{}: {}", user.name, message));
+                let list = self.messages.get_mut(channel);
+                match list {
+                    Some(list) => list.push(format!("{}: {}", user.name, message)),
+                    None => {
+                        self.messages.insert(
+                            channel.to_string(),
+                            vec![format!("{}: {}", user.name, message)],
+                        );
+                    }
+                }
             }
         }
     }
@@ -99,15 +107,16 @@ async fn send_message_handler(
     params: SendMessageParams,
 ) -> MethodResult<Vec<String>> {
     let mut db = resource.db.lock().await;
-    db.insert_message(params.message, &session.user_id);
-    Ok(db.messages.clone())
+    db.insert_message(&params.channel, params.message, &session.user_id);
+    Ok(db.messages.get(&params.channel).unwrap().clone())
 }
 nitram_handler!(
     SendMessageAPI,    // Method name
     SendMessageParams, // Params type
     Vec<String>,       // Return type
     // Params
-    message: String
+    message: String,
+    channel: String
 );
 
 async fn authenticate_handler(
@@ -150,14 +159,23 @@ nitram_handler!(
     token: String
 );
 
-async fn messages_handler(resource: NitramResource) -> MethodResult<Vec<String>> {
+async fn messages_handler(
+    resource: NitramResource,
+    params: MessagesParams,
+) -> MethodResult<Vec<String>> {
     let db = resource.db.lock().await;
-    Ok(db.messages.clone())
+    Ok(db
+        .messages
+        .get(&params.channel)
+        .cloned()
+        .unwrap_or_default())
 }
 nitram_handler!(
-    MessagesAPI, // Method name
-    // Empty params type
-    Vec<String> // Return type
+    MessagesAPI,    // Method name
+    MessagesParams, // Params type
+    Vec<String>,    // Return type
+    // Params
+    channel: String
 );
 
 async fn get_user_handler(resource: NitramResource, params: IdParams) -> MethodResult<User> {
@@ -199,7 +217,7 @@ async fn main() -> std::io::Result<()> {
         .add_public_handler("GetToken", get_token_handler)
         .add_private_handler("SendMessage", send_message_handler)
         .add_private_handler("GetUser", get_user_handler)
-        .add_signal_handler("Messages", messages_handler);
+        .add_server_message_handler("Messages", messages_handler);
     let nitram = cb.build(inner_arc);
     HttpServer::new(move || {
         App::new()

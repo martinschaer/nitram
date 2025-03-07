@@ -7,10 +7,10 @@ use crate::{Nitram, NitramInner};
 pub struct NitramBuilder {
     rpc_router_builder_public: RouterBuilder,
     rpc_router_builder_private: RouterBuilder,
-    rpc_router_builder_signals: RouterBuilder,
+    rpc_router_builder_server_messages: RouterBuilder,
     registered_public_handlers: Vec<String>,
     registered_private_handlers: Vec<String>,
-    registered_signal_handlers: Vec<String>,
+    registered_server_messages_handlers: Vec<String>,
 }
 
 impl Default for NitramBuilder {
@@ -18,10 +18,10 @@ impl Default for NitramBuilder {
         NitramBuilder {
             rpc_router_builder_public: RouterBuilder::default(),
             rpc_router_builder_private: RouterBuilder::default(),
-            rpc_router_builder_signals: RouterBuilder::default(),
+            rpc_router_builder_server_messages: RouterBuilder::default(),
             registered_public_handlers: vec![],
             registered_private_handlers: vec![],
-            registered_signal_handlers: vec![],
+            registered_server_messages_handlers: vec![],
         }
     }
 }
@@ -37,8 +37,8 @@ impl NitramBuilder {
         self.rpc_router_builder_private = self
             .rpc_router_builder_private
             .append_resource(resource.clone());
-        self.rpc_router_builder_signals = self
-            .rpc_router_builder_signals
+        self.rpc_router_builder_server_messages = self
+            .rpc_router_builder_server_messages
             .append_resource(resource.clone());
         self
     }
@@ -71,16 +71,17 @@ impl NitramBuilder {
         self
     }
 
-    pub fn add_signal_handler<H, T, P, R>(mut self, name: &'static str, handler: H) -> Self
+    pub fn add_server_message_handler<H, T, P, R>(mut self, name: &'static str, handler: H) -> Self
     where
         H: Handler<T, P, R> + Clone + Send + Sync + 'static,
         T: Send + Sync + 'static,
         P: Send + Sync + 'static,
         R: Send + Sync + 'static,
     {
-        self.registered_signal_handlers.push(name.to_string());
-        self.rpc_router_builder_signals = self
-            .rpc_router_builder_signals
+        self.registered_server_messages_handlers
+            .push(name.to_string());
+        self.rpc_router_builder_server_messages = self
+            .rpc_router_builder_server_messages
             .append_dyn(name, handler.into_dyn());
         self
     }
@@ -95,16 +96,16 @@ impl NitramBuilder {
             self.registered_private_handlers
         );
         tracing::debug!(
-            "Registered signal handlers: {:?}",
-            self.registered_signal_handlers
+            "Registered server message handlers: {:?}",
+            self.registered_server_messages_handlers
         );
         Nitram::new(
             self.rpc_router_builder_public.build(),
             self.rpc_router_builder_private.build(),
-            self.rpc_router_builder_signals.build(),
+            self.rpc_router_builder_server_messages.build(),
             self.registered_public_handlers,
             self.registered_private_handlers,
-            self.registered_signal_handlers,
+            self.registered_server_messages_handlers,
             inner,
         )
     }

@@ -1,14 +1,14 @@
-import { For, useContext } from "solid-js";
+import { createMemo, createSignal, For, onMount, useContext } from "solid-js";
 
 // -----------------------------------------------------------------------------
 // Nitram bindings
 //
-import { SendMessageAPI } from "nitram/API";
+import { MessagesAPI, SendMessageAPI } from "nitram/API";
 
 // -----------------------------------------------------------------------------
 // Local imports
 //
-import { BackendContext } from "./BackendContext";
+import { BackendContext, messagesHandler } from "./BackendContext";
 import { messages, setMessages } from "./store";
 
 // =============================================================================
@@ -17,6 +17,12 @@ import { messages, setMessages } from "./store";
 function Chat() {
   // -- HTML Elements
   let input!: HTMLInputElement;
+
+  // -- State
+  let [channel, setChannel] = createSignal("general");
+  let channelMessages = createMemo(() => {
+    return messages[channel()] ?? [];
+  }, []);
 
   // -- Nitram context
   const { server } = useContext(BackendContext) ?? { server: null };
@@ -31,20 +37,36 @@ function Chat() {
 
   const handleMethod = () => {
     input.disabled = true;
+    const _channel = channel();
     server()
       .request<SendMessageAPI>({
         id: "fake",
         method: "SendMessage",
-        params: { message: input.value },
+        params: { channel: _channel, message: input.value },
       })
-      .then((messages) => {
+      .then((channel_messages) => {
         input.value = "";
-        setMessages(messages);
+        setMessages({ ...messages, [_channel]: channel_messages });
       })
       .finally(() => {
         input.disabled = false;
       });
   };
+
+  const channelHandler = (channel: string) => {
+    return (data: MessagesAPI["o"]) => messagesHandler(channel, data);
+  };
+
+  const changeChannel = (newChannel: string) => {
+    server().removeServerMessageHandler("Messages");
+    setChannel(newChannel);
+    server().addServerMessageHandler("Messages", channelHandler(newChannel), {
+      channel: newChannel,
+    });
+  };
+
+  // -- Lifecycle
+  onMount(() => changeChannel(channel()));
 
   // -- Render
   return (
@@ -57,8 +79,12 @@ function Chat() {
       </div>
       <div>
         <h2>Messages</h2>
+        <select onChange={(e) => changeChannel(e.target.value)}>
+          <option value="general">General</option>
+          <option value="random">Random</option>
+        </select>
         <ul>
-          <For each={messages}>{(msg, _i) => <li>{msg}</li>}</For>
+          <For each={channelMessages()}>{(msg, _i) => <li>{msg}</li>}</For>
         </ul>
       </div>
     </>

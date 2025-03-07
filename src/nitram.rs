@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::auth::{NitramSession, WSSessionAnonymResource, WSSessionAuthedResource};
 use crate::error::{Error, MethodError, Result};
-use crate::messages::{NitramRequest, NitramResponse, NitramSignal};
+use crate::messages::{NitramRequest, NitramResponse, NitramServerMessage};
 use crate::models::DBSession;
 use crate::nice::{Nice, NiceMessage};
 
@@ -31,7 +31,7 @@ impl NitramInner {
     }
     pub fn auth_ws_session(&mut self, ws_session_id: Uuid, db_session: DBSession) -> () {
         self.ws_sessions
-            .insert(ws_session_id, NitramSession::Authenticated(db_session));
+            .insert(ws_session_id, NitramSession::new(db_session));
         tracing::debug!("auth_ws_session sessions: {:?}", self.ws_sessions);
     }
 }
@@ -41,20 +41,20 @@ pub struct Nitram {
     pub inner: Arc<Mutex<NitramInner>>,
     rpc_router_public: Router,
     rpc_router_private: Router,
-    rpc_router_signals: Router,
+    rpc_router_server_messages: Router,
     registered_public_handlers: Vec<String>,
     registered_private_handlers: Vec<String>,
-    registered_signal_handlers: Vec<String>,
+    registered_server_message_handlers: Vec<String>,
 }
 
 impl Nitram {
     pub fn new(
         rpc_router_public: Router,
         rpc_router_private: Router,
-        rpc_router_signals: Router,
+        rpc_router_server_messages: Router,
         registered_public_handlers: Vec<String>,
         registered_private_handlers: Vec<String>,
-        registered_signal_handlers: Vec<String>,
+        registered_server_message_handlers: Vec<String>,
         inner: Arc<Mutex<NitramInner>>,
     ) -> Self {
         // TODO: spawn a tokio task to read from live query streams
@@ -62,10 +62,10 @@ impl Nitram {
             inner,
             rpc_router_public,
             rpc_router_private,
-            rpc_router_signals,
+            rpc_router_server_messages,
             registered_public_handlers,
             registered_private_handlers,
-            registered_signal_handlers,
+            registered_server_message_handlers,
         }
     }
 
@@ -94,7 +94,10 @@ impl Nitram {
         let inner = self.inner.lock().await;
         tracing::debug!("WS sessions: {:?}", inner.ws_sessions);
         match inner.ws_sessions.get(ws_session_id) {
-            Some(NitramSession::Authenticated(db_session)) => Ok(db_session.clone()),
+            Some(NitramSession::Authenticated {
+                db_session,
+                topics_registered: _,
+            }) => Ok(db_session.clone()),
             Some(NitramSession::Anonymous) => Err(Error::NotAuthorized),
             _ => Err(Error::NotAuthenticated),
         }
@@ -108,6 +111,49 @@ impl Nitram {
     ) -> Result<Value> {
         let msg: String = msg.into();
         tracing::debug!("Handling message: {}, with params: {}", msg, params);
+
+        // -- Topic registration
+        let is_register = msg == "nitram_topic_register";
+        let is_deregister = msg == "nitram_topic_deregister";
+        if is_register || is_deregister {
+            let topic = params.get("topic").map(|x| x.as_str()).flatten();
+            match topic {
+                Some(topic) => {
+                    let params = match params.get("handler_params") {
+                        Some(params) => params.clone(),
+                        None => {
+                            if is_register {
+                                tracing::error!("Missing params for topic registration");
+                            }
+                            Value::Null
+                        }
+                    };
+                    let mut inner = self.inner.lock().await;
+                    tracing::debug!("WS sessions: {:?}", inner.ws_sessions);
+                    match inner.ws_sessions.get_mut(ws_session_id) {
+                        Some(NitramSession::Authenticated {
+                            db_session: _,
+                            topics_registered,
+                        }) => {
+                            if is_register {
+                                topics_registered.insert(topic.to_string(), params);
+                            } else if is_deregister {
+                                topics_registered.remove(topic);
+                            }
+                            return Ok(json!(true));
+                        }
+                        _ => {
+                            tracing::error!("Invalid session state for topic registration");
+                        }
+                    }
+                }
+                None => {
+                    tracing::error!("Missing topic for registration");
+                }
+            }
+        }
+
+        // -- RPC handling
         let is_public = self.registered_public_handlers.contains(&msg);
         let is_private = self.registered_private_handlers.contains(&msg);
         let rpc_request: Request = json!({
@@ -117,7 +163,6 @@ impl Nitram {
             "params": Some(params),
         })
         .try_into()?;
-
         let result = if is_public {
             let session_resource = WSSessionAnonymResource {
                 ws_session_id: ws_session_id.clone(),
@@ -229,45 +274,60 @@ impl Nitram {
         serde_json::to_string(&response).unwrap_or_default()
     }
 
-    pub async fn get_signals_for_session(&self, ws_session_id: &Uuid) -> Vec<NitramSignal> {
-        let mut signals: Vec<NitramSignal> = vec![];
+    pub async fn get_server_messages_for_session(
+        &self,
+        ws_session_id: &Uuid,
+    ) -> Vec<NitramServerMessage> {
+        let mut server_messages: Vec<NitramServerMessage> = vec![];
         let inner = self.inner.lock().await;
         let session = inner.ws_sessions.get(ws_session_id);
         if let Some(session) = session {
-            if let NitramSession::Authenticated(db_session) = session {
-                // Call registered signal handlers
-                for signal_handler_name in &self.registered_signal_handlers {
-                    let rpc_request = Request {
-                        id: "fake".into(),
-                        method: signal_handler_name.clone(),
-                        params: None,
-                    };
-                    let session_resource = WSSessionAuthedResource {
-                        user_id: db_session.user_id.clone(),
-                    };
-                    let rpc_resources = Resources::builder().append(session_resource).build();
+            if let NitramSession::Authenticated {
+                db_session,
+                topics_registered,
+            } = session
+            {
+                // Call registered server message handlers
+                for topic in &self.registered_server_message_handlers {
+                    match topics_registered.contains_key(topic) {
+                        true => {
+                            let rpc_request = Request {
+                                id: "fake".into(),
+                                method: topic.clone(),
+                                params: topics_registered.get(topic).cloned(),
+                            };
+                            let session_resource = WSSessionAuthedResource {
+                                user_id: db_session.user_id.clone(),
+                            };
+                            let rpc_resources =
+                                Resources::builder().append(session_resource).build();
 
-                    let result: Result<Value> = self
-                        .rpc_router_signals
-                        .call_with_resources(rpc_request, rpc_resources)
-                        .await
-                        .map(|r| r.value)
-                        .map_err(|e| e.into());
+                            let result: Result<Value> = self
+                                .rpc_router_server_messages
+                                .call_with_resources(rpc_request, rpc_resources)
+                                .await
+                                .map(|r| r.value)
+                                .map_err(|e| e.into());
 
-                    match result {
-                        Ok(result) => {
-                            signals.push(NitramSignal {
-                                signal: signal_handler_name.clone(),
-                                payload: result,
-                            });
+                            match result {
+                                Ok(result) => {
+                                    server_messages.push(NitramServerMessage {
+                                        topic: topic.clone(),
+                                        payload: result,
+                                    });
+                                }
+                                Err(e) => {
+                                    tracing::error!("Error calling server message handler: {}", e);
+                                }
+                            }
                         }
-                        Err(e) => {
-                            tracing::error!("Error calling signal handler: {}", e);
+                        false => {
+                            // Skip if user is not registered to the topic
                         }
                     }
                 }
             }
         }
-        signals
+        server_messages
     }
 }

@@ -21,14 +21,14 @@ import { MessagesAPI } from "nitram/API";
 // Local imports
 //
 import { Server } from "./lib/nitram";
-import { setMessages } from "./store";
+import { messages, setMessages } from "./store";
 
 // -----------------------------------------------------------------------------
 // Handlers
 //
-const messagesHandler = (payload: MessagesAPI["o"]) => {
+export const messagesHandler = (channel: string, payload: MessagesAPI["o"]) => {
   if (Array.isArray(payload)) {
-    setMessages(payload);
+    setMessages({ ...messages, [channel]: payload });
   } else {
     console.error("Payload type is different than expected", payload);
   }
@@ -62,14 +62,16 @@ export const BackendProvider: ParentComponent<{
   // -- Lifecycle
   onMount(() => {
     const _server = server();
-    _server.addSignalHandler("Messages", messagesHandler);
+    // We could register for Messages here, but we can do that in the Chat
+    // component so we don't make unnecessary requests
+    // _server.addServerMessageHandler("Messages", messagesHandler);
     _server.addEventHandler("(~ not authenticated ~)", pleaseLogInHandler);
     _server.addEventHandler("auth", isAuthenticatedSet);
   });
 
   onCleanup(() => {
     const _server = server();
-    _server.removeSignalHandler("Messages", messagesHandler);
+    // _server.removeServerMessageHandler("Messages", messagesHandler);
     _server.removeEventHandler("(~ not authenticated ~)", pleaseLogInHandler);
     _server.removeEventHandler("auth", isAuthenticatedSet);
     _server.stop();

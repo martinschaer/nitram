@@ -1,12 +1,16 @@
 import { AuthenticateAPI } from "nitram/API";
 
 import { NitramResponse } from "nitram/NitramResponse";
-import { NitramSignal } from "nitram/NitramSignal";
+import { NitramServerMessage } from "nitram/NitramServerMessage";
 import { NitramRequest } from "nitram/NitramRequest";
 import { JsonValue } from "nitram/serde_json/JsonValue";
 
 type EventHandler = (data: any) => void;
-type SignalHandler = (data: any) => void;
+type ServerMessageHandler = (data: any) => void;
+type QueueItem = NitramRequest & {
+  resolve: (val: any) => any;
+  reject: () => any;
+};
 
 function wsStateToString(state: number) {
   switch (state) {
@@ -37,11 +41,9 @@ export class Server {
   private handlers: Map<string, (data: any) => void> = new Map();
   private errorHandlers: Map<string, (data: any) => void> = new Map();
   private eventHandlers: Map<string, EventHandler[]> = new Map();
-  private signalHandlers: Map<string, SignalHandler[]> = new Map();
-  private queue: (NitramRequest & {
-    resolve: (val: any) => any;
-    reject: () => any;
-  })[] = [];
+  private serverMessageHandlers: Map<string, ServerMessageHandler[]> =
+    new Map();
+  private queue: QueueItem[] = [];
 
   // -- Constructor
   constructor() {
@@ -57,20 +59,20 @@ export class Server {
   private process_message_from_server(data: JsonValue) {
     if (data === null) {
       // - null
-    } else if (data.hasOwnProperty("signal")) {
-      // - signals
-      const signalData = data as NitramSignal;
+    } else if (data.hasOwnProperty("topic")) {
+      // - server messages
+      const serverMessageData = data as NitramServerMessage;
 
-      // -- find registered signal handlers
-      const handlers = this.signalHandlers.get(signalData.signal);
+      // -- find registered server message handlers
+      const handlers = this.serverMessageHandlers.get(serverMessageData.topic);
       if (handlers) {
-        console.log(`<-- signal: ${signalData.signal}`);
+        console.log(`<-- server msg: ${serverMessageData.topic}`);
         for (const handler of handlers) {
-          handler(signalData.payload);
+          handler(serverMessageData.payload);
         }
       } else {
-        // -- unhandled signal
-        console.log("<-- signal unhandled: ", signalData.signal);
+        // -- unhandled server message
+        console.log("<-- server msg unhandled: ", serverMessageData.topic);
       }
     } else {
       // - message responses
@@ -237,27 +239,35 @@ export class Server {
   }
 
   // ---------------------------------------------------------------------------
-  // -- Signal Handlers
-  addSignalHandler(signal: string, handler: SignalHandler) {
-    if (!this.signalHandlers.has(signal)) {
-      this.signalHandlers.set(signal, []);
+  // -- Server Message Handlers
+  addServerMessageHandler(
+    key: string,
+    handler: ServerMessageHandler,
+    params: { [key in string]?: JsonValue },
+  ) {
+    if (!this.serverMessageHandlers.has(key)) {
+      this.serverMessageHandlers.set(key, []);
     }
-    const handlers = this.signalHandlers.get(signal);
+    const handlers = this.serverMessageHandlers.get(key);
     if (handlers) {
       handlers.push(handler);
     }
+    this.request({
+      id: "fake",
+      method: "nitram_topic_register",
+      params: { topic: key, handler_params: params },
+    });
   }
 
-  removeSignalHandler(signal: string, handler: SignalHandler) {
-    if (this.signalHandlers.has(signal)) {
-      const handlers = this.signalHandlers.get(signal);
-      if (handlers) {
-        const index = handlers.indexOf(handler);
-        if (index > -1) {
-          handlers.splice(index, 1);
-        }
-      }
+  removeServerMessageHandler(key: string) {
+    if (this.serverMessageHandlers.has(key)) {
+      this.serverMessageHandlers.delete(key);
     }
+    this.request({
+      id: "fake",
+      method: "nitram_topic_deregister",
+      params: { topic: key },
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -294,14 +304,18 @@ export class Server {
       }
     } else {
       console.log("Queueing request", payload);
-      const { promise, resolve, reject } = Promise.withResolvers<T["o"]>();
-      this.queue.push({
+      let item: QueueItem = {
         id: payload.id,
         method: payload.method,
         params: payload.params,
-        resolve,
-        reject,
+        resolve: () => {},
+        reject: () => {},
+      };
+      const promise = new Promise<T["o"]>((res, rej) => {
+        item.resolve = res;
+        item.reject = rej;
       });
+      this.queue.push(item);
       return promise;
     }
   }
