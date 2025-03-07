@@ -1,0 +1,9 @@
+{
+  "name": "nitram-monorepo",
+  "version": "0.2.0",
+  "type": "module",
+  "workspaces": [
+    "packages/nitram",
+    "examples/main/web-app"
+  ]
+}

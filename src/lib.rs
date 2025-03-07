@@ -19,6 +19,8 @@ pub use nitram::*;
 
 pub use builder::NitramBuilder;
 
+pub use auth::AuthenticateParams;
+
 #[derive(TS)]
 #[ts(export, export_to = "Nitram.ts")]
 pub struct EmptyParams;
@@ -54,7 +56,7 @@ macro_rules! nitram_handler {
         #[ts(export, export_to = "API/Params.ts")]
         pub struct $params_ty {
             $(
-                $param_name: $param_ty,
+                pub $param_name: $param_ty,
             )*
         }
 
@@ -62,6 +64,7 @@ macro_rules! nitram_handler {
 
         #[derive(TS)]
         #[ts(export, export_to = "API/index.ts")]
+        #[allow(dead_code)]
         struct $name {
             i: $params_ty,
             o: $output_ty,

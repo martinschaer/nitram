@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "nitram": "workspace:*",
     "solid-js": "^1.9.3"
   },
   "devDependencies": {

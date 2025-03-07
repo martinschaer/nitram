@@ -1,15 +1,17 @@
 default:
     @just --list
 
-gen-bindings:
+# Generate bindings
+bindings:
     rm -rf bindings
+    # Generate main bindings
     cargo test
-
-gen-example-bindings: gen-bindings
+    cp -r bindings packages/nitram/bindings
+    # Generate example bindings
     cargo test --example main
+    # Move all bindings to example
     rm -rf examples/main/bindings
     mv bindings examples/main/bindings
-    just gen-bindings
 
 install-example:
     cd examples/main/web-app && bun install
@@ -19,3 +21,6 @@ build-example:
 
 run-example: build-example
     RUST_LOG=debug cargo run --example main
+
+pack:
+    cd packages/nitram && bun pm pack

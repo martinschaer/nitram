@@ -1,9 +1,8 @@
-import { AuthenticateAPI } from "nitram/API";
-
-import { NitramResponse } from "nitram/NitramResponse";
-import { NitramServerMessage } from "nitram/NitramServerMessage";
-import { NitramRequest } from "nitram/NitramRequest";
-import { JsonValue } from "nitram/serde_json/JsonValue";
+import type { NitramResponse } from "./bindings/NitramResponse";
+import type { NitramServerMessage } from "./bindings/NitramServerMessage";
+import type { NitramRequest } from "./bindings/NitramRequest";
+import type { JsonValue } from "./bindings/serde_json/JsonValue";
+import type { AuthenticateAPI } from "./bindings/API";
 
 type EventHandler = (data: any) => void;
 type ServerMessageHandler = (data: any) => void;

@@ -15,12 +15,12 @@ import {
 // -----------------------------------------------------------------------------
 // Nitram bindings
 //
-import { MessagesAPI } from "nitram/API";
+import { MessagesAPI } from "bindings/API";
 
 // -----------------------------------------------------------------------------
 // Local imports
 //
-import { Server } from "./lib/nitram";
+import { Server } from "nitram";
 import { messages, setMessages } from "./store";
 
 // -----------------------------------------------------------------------------
