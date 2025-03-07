@@ -26,7 +26,7 @@ import { setMessages } from "./store";
 // -----------------------------------------------------------------------------
 // Handlers
 //
-const messagesHandler = (payload: MessagesAPI["o"]) => {
+export const messagesHandler = (payload: MessagesAPI["o"]) => {
   if (Array.isArray(payload)) {
     setMessages(payload);
   } else {
@@ -62,14 +62,16 @@ export const BackendProvider: ParentComponent<{
   // -- Lifecycle
   onMount(() => {
     const _server = server();
-    _server.addServerMessageHandler("Messages", messagesHandler);
+    // We could register for Messages here, but we can do that in the Chat
+    // component so we don't make unnecessary requests
+    // _server.addServerMessageHandler("Messages", messagesHandler);
     _server.addEventHandler("(~ not authenticated ~)", pleaseLogInHandler);
     _server.addEventHandler("auth", isAuthenticatedSet);
   });
 
   onCleanup(() => {
     const _server = server();
-    _server.removeServerMessageHandler("Messages", messagesHandler);
+    // _server.removeServerMessageHandler("Messages", messagesHandler);
     _server.removeEventHandler("(~ not authenticated ~)", pleaseLogInHandler);
     _server.removeEventHandler("auth", isAuthenticatedSet);
     _server.stop();

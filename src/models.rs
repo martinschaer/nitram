@@ -20,6 +20,8 @@ pub struct ParsedToken {
 // Uuid, with a new() method, and implementing Serialize and Deserialize
 pub type DBSessionId = String;
 
+/// DBSession is a **user session** that is stored in the database. The name is
+/// confusing because this is not a DB session. Could be renamed to UserSession
 #[derive(Clone, Serialize, Deserialize)]
 pub struct DBSession {
     pub id: DBSessionId,

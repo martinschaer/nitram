@@ -24,15 +24,35 @@ pub struct WSSessionAuthedResource {
 #[derive(Clone)]
 pub enum NitramSession {
     Anonymous,
-    Authenticated(DBSession),
+    Authenticated {
+        db_session: DBSession,
+        topics_registered: Vec<String>,
+    },
+}
+
+impl NitramSession {
+    pub fn new(db_session: DBSession) -> Self {
+        NitramSession::Authenticated {
+            db_session,
+            topics_registered: vec![],
+        }
+    }
 }
 
 impl fmt::Debug for NitramSession {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             NitramSession::Anonymous => write!(f, "Anonymous"),
-            NitramSession::Authenticated(db_session) => {
-                write!(f, "Authenticated({})", db_session.id)
+            NitramSession::Authenticated {
+                db_session,
+                topics_registered,
+            } => {
+                write!(
+                    f,
+                    "Authenticated({},topics={})",
+                    db_session.id,
+                    topics_registered.join(",")
+                )
             }
         }
     }

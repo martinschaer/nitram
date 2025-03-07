@@ -59,20 +59,20 @@ export class Server {
   private process_message_from_server(data: JsonValue) {
     if (data === null) {
       // - null
-    } else if (data.hasOwnProperty("key")) {
+    } else if (data.hasOwnProperty("topic")) {
       // - server messages
       const serverMessageData = data as NitramServerMessage;
 
       // -- find registered server message handlers
-      const handlers = this.serverMessageHandlers.get(serverMessageData.key);
+      const handlers = this.serverMessageHandlers.get(serverMessageData.topic);
       if (handlers) {
-        console.log(`<-- server msg: ${serverMessageData.key}`);
+        console.log(`<-- server msg: ${serverMessageData.topic}`);
         for (const handler of handlers) {
           handler(serverMessageData.payload);
         }
       } else {
         // -- unhandled server message
-        console.log("<-- server msg unhandled: ", serverMessageData.key);
+        console.log("<-- server msg unhandled: ", serverMessageData.topic);
       }
     } else {
       // - message responses
@@ -248,6 +248,11 @@ export class Server {
     if (handlers) {
       handlers.push(handler);
     }
+    this.request({
+      id: "fake",
+      method: "nitram_topic_register",
+      params: { topic: key },
+    });
   }
 
   removeServerMessageHandler(key: string, handler: ServerMessageHandler) {
@@ -260,6 +265,11 @@ export class Server {
         }
       }
     }
+    this.request({
+      id: "fake",
+      method: "nitram_topic_deregister",
+      params: { topic: key },
+    });
   }
 
   // ---------------------------------------------------------------------------

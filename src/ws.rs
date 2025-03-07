@@ -51,11 +51,13 @@ pub async fn handler(
             let server_messages = nitram_for_loop
                 .get_server_messages_for_session(&session_id)
                 .await;
-            match serde_json::to_string(&server_messages) {
-                Ok(json) => {
-                    let _ = session2.text(json).await;
+            if !server_messages.is_empty() {
+                match serde_json::to_string(&server_messages) {
+                    Ok(json) => {
+                        let _ = session2.text(json).await;
+                    }
+                    _ => {}
                 }
-                _ => {}
             }
         }
 

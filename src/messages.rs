@@ -33,6 +33,6 @@ impl NitramResponse {
 #[derive(Serialize, TS)]
 #[ts(export)]
 pub struct NitramServerMessage {
-    pub key: String,
+    pub topic: String,
     pub payload: Value,
 }

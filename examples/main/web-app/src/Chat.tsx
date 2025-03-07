@@ -1,4 +1,4 @@
-import { For, useContext } from "solid-js";
+import { createSignal, For, useContext } from "solid-js";
 
 // -----------------------------------------------------------------------------
 // Nitram bindings
@@ -8,7 +8,7 @@ import { SendMessageAPI } from "nitram/API";
 // -----------------------------------------------------------------------------
 // Local imports
 //
-import { BackendContext } from "./BackendContext";
+import { BackendContext, messagesHandler } from "./BackendContext";
 import { messages, setMessages } from "./store";
 
 // =============================================================================
@@ -17,6 +17,9 @@ import { messages, setMessages } from "./store";
 function Chat() {
   // -- HTML Elements
   let input!: HTMLInputElement;
+
+  // -- State
+  let [listening, setListening] = createSignal(false);
 
   // -- Nitram context
   const { server } = useContext(BackendContext) ?? { server: null };
@@ -46,6 +49,16 @@ function Chat() {
       });
   };
 
+  const handlePause = () => {
+    const curr = listening();
+    if (curr) {
+      server().removeServerMessageHandler("Messages", messagesHandler);
+    } else {
+      server().addServerMessageHandler("Messages", messagesHandler);
+    }
+    setListening(!curr);
+  };
+
   // -- Render
   return (
     <>
@@ -54,6 +67,9 @@ function Chat() {
         <h1>Chat</h1>
         <input type="text" ref={(el) => (input = el)} placeholder="Message" />
         <button onClick={handleMethod}>Send</button>
+        <button onClick={handlePause}>
+          {listening() ? "Pause" : "Resume"}
+        </button>
       </div>
       <div>
         <h2>Messages</h2>
