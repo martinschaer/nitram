@@ -15,7 +15,7 @@ import {
 // -----------------------------------------------------------------------------
 // Nitram bindings
 //
-import { AuthenticateAPI, MessagesAPI } from "nitram/API";
+import { MessagesAPI } from "nitram/API";
 
 // -----------------------------------------------------------------------------
 // Local imports
@@ -38,7 +38,7 @@ const messagesHandler = (payload: MessagesAPI["o"]) => {
 // Context Type
 //
 type BackendContextType = {
-  server: Accessor<Server<AuthenticateAPI>>;
+  server: Accessor<Server>;
 };
 export const BackendContext = createContext<BackendContextType>();
 
