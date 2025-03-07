@@ -1,8 +1,9 @@
 use base64::prelude::*;
 use chrono::{DateTime, Utc};
 use rpc_router::RpcResource;
-use std::fmt;
+use serde_json::Value;
 use std::time::Duration;
+use std::{collections::HashMap, fmt};
 use uuid::Uuid;
 
 use crate::{
@@ -26,7 +27,7 @@ pub enum NitramSession {
     Anonymous,
     Authenticated {
         db_session: DBSession,
-        topics_registered: Vec<String>,
+        topics_registered: HashMap<String, Value>,
     },
 }
 
@@ -34,7 +35,7 @@ impl NitramSession {
     pub fn new(db_session: DBSession) -> Self {
         NitramSession::Authenticated {
             db_session,
-            topics_registered: vec![],
+            topics_registered: HashMap::new(),
         }
     }
 }
@@ -49,9 +50,9 @@ impl fmt::Debug for NitramSession {
             } => {
                 write!(
                     f,
-                    "Authenticated({},topics={})",
+                    "Authenticated({},topics={:?})",
                     db_session.id,
-                    topics_registered.join(",")
+                    topics_registered.keys().collect::<Vec<&String>>()
                 )
             }
         }

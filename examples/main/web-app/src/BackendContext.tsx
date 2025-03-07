@@ -21,14 +21,14 @@ import { MessagesAPI } from "nitram/API";
 // Local imports
 //
 import { Server } from "./lib/nitram";
-import { setMessages } from "./store";
+import { messages, setMessages } from "./store";
 
 // -----------------------------------------------------------------------------
 // Handlers
 //
-export const messagesHandler = (payload: MessagesAPI["o"]) => {
+export const messagesHandler = (channel: string, payload: MessagesAPI["o"]) => {
   if (Array.isArray(payload)) {
-    setMessages(payload);
+    setMessages({ ...messages, [channel]: payload });
   } else {
     console.error("Payload type is different than expected", payload);
   }

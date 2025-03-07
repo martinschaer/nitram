@@ -119,6 +119,15 @@ impl Nitram {
             let topic = params.get("topic").map(|x| x.as_str()).flatten();
             match topic {
                 Some(topic) => {
+                    let params = match params.get("handler_params") {
+                        Some(params) => params.clone(),
+                        None => {
+                            if is_register {
+                                tracing::error!("Missing params for topic registration");
+                            }
+                            Value::Null
+                        }
+                    };
                     let mut inner = self.inner.lock().await;
                     tracing::debug!("WS sessions: {:?}", inner.ws_sessions);
                     match inner.ws_sessions.get_mut(ws_session_id) {
@@ -127,9 +136,9 @@ impl Nitram {
                             topics_registered,
                         }) => {
                             if is_register {
-                                topics_registered.push(topic.to_string());
+                                topics_registered.insert(topic.to_string(), params);
                             } else if is_deregister {
-                                topics_registered.retain(|x| x != topic);
+                                topics_registered.remove(topic);
                             }
                             return Ok(json!(true));
                         }
@@ -279,38 +288,41 @@ impl Nitram {
             } = session
             {
                 // Call registered server message handlers
-                for server_message_handler_name in &self.registered_server_message_handlers {
-                    // Skip if user is not registered to the topic
-                    if !topics_registered.contains(server_message_handler_name) {
-                        continue;
-                    }
+                for topic in &self.registered_server_message_handlers {
+                    match topics_registered.contains_key(topic) {
+                        true => {
+                            let rpc_request = Request {
+                                id: "fake".into(),
+                                method: topic.clone(),
+                                params: topics_registered.get(topic).cloned(),
+                            };
+                            let session_resource = WSSessionAuthedResource {
+                                user_id: db_session.user_id.clone(),
+                            };
+                            let rpc_resources =
+                                Resources::builder().append(session_resource).build();
 
-                    let rpc_request = Request {
-                        id: "fake".into(),
-                        method: server_message_handler_name.clone(),
-                        params: None,
-                    };
-                    let session_resource = WSSessionAuthedResource {
-                        user_id: db_session.user_id.clone(),
-                    };
-                    let rpc_resources = Resources::builder().append(session_resource).build();
+                            let result: Result<Value> = self
+                                .rpc_router_server_messages
+                                .call_with_resources(rpc_request, rpc_resources)
+                                .await
+                                .map(|r| r.value)
+                                .map_err(|e| e.into());
 
-                    let result: Result<Value> = self
-                        .rpc_router_server_messages
-                        .call_with_resources(rpc_request, rpc_resources)
-                        .await
-                        .map(|r| r.value)
-                        .map_err(|e| e.into());
-
-                    match result {
-                        Ok(result) => {
-                            server_messages.push(NitramServerMessage {
-                                topic: server_message_handler_name.clone(),
-                                payload: result,
-                            });
+                            match result {
+                                Ok(result) => {
+                                    server_messages.push(NitramServerMessage {
+                                        topic: topic.clone(),
+                                        payload: result,
+                                    });
+                                }
+                                Err(e) => {
+                                    tracing::error!("Error calling server message handler: {}", e);
+                                }
+                            }
                         }
-                        Err(e) => {
-                            tracing::error!("Error calling server message handler: {}", e);
+                        false => {
+                            // Skip if user is not registered to the topic
                         }
                     }
                 }

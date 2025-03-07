@@ -240,7 +240,11 @@ export class Server {
 
   // ---------------------------------------------------------------------------
   // -- Server Message Handlers
-  addServerMessageHandler(key: string, handler: ServerMessageHandler) {
+  addServerMessageHandler(
+    key: string,
+    handler: ServerMessageHandler,
+    params: { [key in string]?: JsonValue },
+  ) {
     if (!this.serverMessageHandlers.has(key)) {
       this.serverMessageHandlers.set(key, []);
     }
@@ -251,19 +255,13 @@ export class Server {
     this.request({
       id: "fake",
       method: "nitram_topic_register",
-      params: { topic: key },
+      params: { topic: key, handler_params: params },
     });
   }
 
-  removeServerMessageHandler(key: string, handler: ServerMessageHandler) {
+  removeServerMessageHandler(key: string) {
     if (this.serverMessageHandlers.has(key)) {
-      const handlers = this.serverMessageHandlers.get(key);
-      if (handlers) {
-        const index = handlers.indexOf(handler);
-        if (index > -1) {
-          handlers.splice(index, 1);
-        }
-      }
+      this.serverMessageHandlers.delete(key);
     }
     this.request({
       id: "fake",
