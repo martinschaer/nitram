@@ -3,7 +3,7 @@ import { createMemo, createSignal, For, onMount, useContext } from "solid-js";
 // -----------------------------------------------------------------------------
 // Nitram bindings
 //
-import { MessagesAPI, SendMessageAPI } from "nitram/API";
+import { MessagesAPI, SendMessageAPI } from "bindings/API";
 
 // -----------------------------------------------------------------------------
 // Local imports

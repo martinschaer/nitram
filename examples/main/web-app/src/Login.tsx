@@ -3,7 +3,7 @@ import { useContext } from "solid-js";
 // -----------------------------------------------------------------------------
 // Nitram bindings
 //
-import { GetTokenAPI } from "nitram/API";
+import { GetTokenAPI } from "bindings/API";
 
 // -----------------------------------------------------------------------------
 // Local imports

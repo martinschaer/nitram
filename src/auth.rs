@@ -1,11 +1,14 @@
 use base64::prelude::*;
 use chrono::{DateTime, Utc};
-use rpc_router::RpcResource;
+use rpc_router::{IntoParams, RpcResource};
+use serde::Deserialize;
 use serde_json::Value;
 use std::time::Duration;
 use std::{collections::HashMap, fmt};
+use ts_rs::TS;
 use uuid::Uuid;
 
+use crate::nitram_handler;
 use crate::{
     error::{Error, Result},
     models::{AuthStrategy, DBSession, DBSessionId, ParsedToken},
@@ -85,3 +88,11 @@ pub fn parse_token(token: impl Into<String>) -> Result<ParsedToken> {
     let token = token.map_err(|e| Error::TokenError(e.to_string()))?;
     serde_json::from_slice(&token).map_err(|e| Error::TokenError(e.to_string()))
 }
+
+nitram_handler!(
+    AuthenticateAPI,    // Method name
+    AuthenticateParams, // Params type
+    bool,               // Return type
+    // Params
+    token: String
+);

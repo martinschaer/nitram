@@ -13,7 +13,8 @@ use nitram::{
     auth::{parse_token, WSSessionAnonymResource, WSSessionAuthedResource},
     error::{MethodError, MethodResult},
     models::{AuthStrategy, DBSession, ParsedToken},
-    nitram_handler, ws, FromResources, IdParams, IntoParams, NitramBuilder, NitramInner,
+    nitram_handler, ws, AuthenticateParams, FromResources, IdParams, IntoParams, NitramBuilder,
+    NitramInner,
 };
 
 #[derive(Clone, Deserialize, Serialize, TS)]
@@ -151,13 +152,6 @@ async fn authenticate_handler(
         }
     }
 }
-nitram_handler!(
-    AuthenticateAPI,    // Method name
-    AuthenticateParams, // Params type
-    bool,               // Return type
-    // Params
-    token: String
-);
 
 async fn messages_handler(
     resource: NitramResource,
