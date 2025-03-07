@@ -47,9 +47,11 @@ pub async fn handler(
                 break;
             }
 
-            // -- Session signals
-            let signals = nitram_for_loop.get_signals_for_session(&session_id).await;
-            match serde_json::to_string(&signals) {
+            // -- Session server messages
+            let server_messages = nitram_for_loop
+                .get_server_messages_for_session(&session_id)
+                .await;
+            match serde_json::to_string(&server_messages) {
                 Ok(json) => {
                     let _ = session2.text(json).await;
                 }

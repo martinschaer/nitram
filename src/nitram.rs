@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::auth::{NitramSession, WSSessionAnonymResource, WSSessionAuthedResource};
 use crate::error::{Error, MethodError, Result};
-use crate::messages::{NitramRequest, NitramResponse, NitramSignal};
+use crate::messages::{NitramRequest, NitramResponse, NitramServerMessage};
 use crate::models::DBSession;
 use crate::nice::{Nice, NiceMessage};
 
@@ -41,20 +41,20 @@ pub struct Nitram {
     pub inner: Arc<Mutex<NitramInner>>,
     rpc_router_public: Router,
     rpc_router_private: Router,
-    rpc_router_signals: Router,
+    rpc_router_server_messages: Router,
     registered_public_handlers: Vec<String>,
     registered_private_handlers: Vec<String>,
-    registered_signal_handlers: Vec<String>,
+    registered_server_message_handlers: Vec<String>,
 }
 
 impl Nitram {
     pub fn new(
         rpc_router_public: Router,
         rpc_router_private: Router,
-        rpc_router_signals: Router,
+        rpc_router_server_messages: Router,
         registered_public_handlers: Vec<String>,
         registered_private_handlers: Vec<String>,
-        registered_signal_handlers: Vec<String>,
+        registered_server_message_handlers: Vec<String>,
         inner: Arc<Mutex<NitramInner>>,
     ) -> Self {
         // TODO: spawn a tokio task to read from live query streams
@@ -62,10 +62,10 @@ impl Nitram {
             inner,
             rpc_router_public,
             rpc_router_private,
-            rpc_router_signals,
+            rpc_router_server_messages,
             registered_public_handlers,
             registered_private_handlers,
-            registered_signal_handlers,
+            registered_server_message_handlers,
         }
     }
 
@@ -229,17 +229,20 @@ impl Nitram {
         serde_json::to_string(&response).unwrap_or_default()
     }
 
-    pub async fn get_signals_for_session(&self, ws_session_id: &Uuid) -> Vec<NitramSignal> {
-        let mut signals: Vec<NitramSignal> = vec![];
+    pub async fn get_server_messages_for_session(
+        &self,
+        ws_session_id: &Uuid,
+    ) -> Vec<NitramServerMessage> {
+        let mut server_messages: Vec<NitramServerMessage> = vec![];
         let inner = self.inner.lock().await;
         let session = inner.ws_sessions.get(ws_session_id);
         if let Some(session) = session {
             if let NitramSession::Authenticated(db_session) = session {
-                // Call registered signal handlers
-                for signal_handler_name in &self.registered_signal_handlers {
+                // Call registered server message handlers
+                for server_message_handler_name in &self.registered_server_message_handlers {
                     let rpc_request = Request {
                         id: "fake".into(),
-                        method: signal_handler_name.clone(),
+                        method: server_message_handler_name.clone(),
                         params: None,
                     };
                     let session_resource = WSSessionAuthedResource {
@@ -248,7 +251,7 @@ impl Nitram {
                     let rpc_resources = Resources::builder().append(session_resource).build();
 
                     let result: Result<Value> = self
-                        .rpc_router_signals
+                        .rpc_router_server_messages
                         .call_with_resources(rpc_request, rpc_resources)
                         .await
                         .map(|r| r.value)
@@ -256,18 +259,18 @@ impl Nitram {
 
                     match result {
                         Ok(result) => {
-                            signals.push(NitramSignal {
-                                signal: signal_handler_name.clone(),
+                            server_messages.push(NitramServerMessage {
+                                key: server_message_handler_name.clone(),
                                 payload: result,
                             });
                         }
                         Err(e) => {
-                            tracing::error!("Error calling signal handler: {}", e);
+                            tracing::error!("Error calling server message handler: {}", e);
                         }
                     }
                 }
             }
         }
-        signals
+        server_messages
     }
 }

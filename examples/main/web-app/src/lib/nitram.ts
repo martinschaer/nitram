@@ -1,12 +1,12 @@
 import { AuthenticateAPI } from "nitram/API";
 
 import { NitramResponse } from "nitram/NitramResponse";
-import { NitramSignal } from "nitram/NitramSignal";
+import { NitramServerMessage } from "nitram/NitramServerMessage";
 import { NitramRequest } from "nitram/NitramRequest";
 import { JsonValue } from "nitram/serde_json/JsonValue";
 
 type EventHandler = (data: any) => void;
-type SignalHandler = (data: any) => void;
+type ServerMessageHandler = (data: any) => void;
 type QueueItem = NitramRequest & {
   resolve: (val: any) => any;
   reject: () => any;
@@ -41,7 +41,8 @@ export class Server {
   private handlers: Map<string, (data: any) => void> = new Map();
   private errorHandlers: Map<string, (data: any) => void> = new Map();
   private eventHandlers: Map<string, EventHandler[]> = new Map();
-  private signalHandlers: Map<string, SignalHandler[]> = new Map();
+  private serverMessageHandlers: Map<string, ServerMessageHandler[]> =
+    new Map();
   private queue: QueueItem[] = [];
 
   // -- Constructor
@@ -58,20 +59,20 @@ export class Server {
   private process_message_from_server(data: JsonValue) {
     if (data === null) {
       // - null
-    } else if (data.hasOwnProperty("signal")) {
-      // - signals
-      const signalData = data as NitramSignal;
+    } else if (data.hasOwnProperty("key")) {
+      // - server messages
+      const serverMessageData = data as NitramServerMessage;
 
-      // -- find registered signal handlers
-      const handlers = this.signalHandlers.get(signalData.signal);
+      // -- find registered server message handlers
+      const handlers = this.serverMessageHandlers.get(serverMessageData.key);
       if (handlers) {
-        console.log(`<-- signal: ${signalData.signal}`);
+        console.log(`<-- server msg: ${serverMessageData.key}`);
         for (const handler of handlers) {
-          handler(signalData.payload);
+          handler(serverMessageData.payload);
         }
       } else {
-        // -- unhandled signal
-        console.log("<-- signal unhandled: ", signalData.signal);
+        // -- unhandled server message
+        console.log("<-- server msg unhandled: ", serverMessageData.key);
       }
     } else {
       // - message responses
@@ -238,20 +239,20 @@ export class Server {
   }
 
   // ---------------------------------------------------------------------------
-  // -- Signal Handlers
-  addSignalHandler(signal: string, handler: SignalHandler) {
-    if (!this.signalHandlers.has(signal)) {
-      this.signalHandlers.set(signal, []);
+  // -- Server Message Handlers
+  addServerMessageHandler(key: string, handler: ServerMessageHandler) {
+    if (!this.serverMessageHandlers.has(key)) {
+      this.serverMessageHandlers.set(key, []);
     }
-    const handlers = this.signalHandlers.get(signal);
+    const handlers = this.serverMessageHandlers.get(key);
     if (handlers) {
       handlers.push(handler);
     }
   }
 
-  removeSignalHandler(signal: string, handler: SignalHandler) {
-    if (this.signalHandlers.has(signal)) {
-      const handlers = this.signalHandlers.get(signal);
+  removeServerMessageHandler(key: string, handler: ServerMessageHandler) {
+    if (this.serverMessageHandlers.has(key)) {
+      const handlers = this.serverMessageHandlers.get(key);
       if (handlers) {
         const index = handlers.indexOf(handler);
         if (index > -1) {

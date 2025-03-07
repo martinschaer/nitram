@@ -62,14 +62,14 @@ export const BackendProvider: ParentComponent<{
   // -- Lifecycle
   onMount(() => {
     const _server = server();
-    _server.addSignalHandler("Messages", messagesHandler);
+    _server.addServerMessageHandler("Messages", messagesHandler);
     _server.addEventHandler("(~ not authenticated ~)", pleaseLogInHandler);
     _server.addEventHandler("auth", isAuthenticatedSet);
   });
 
   onCleanup(() => {
     const _server = server();
-    _server.removeSignalHandler("Messages", messagesHandler);
+    _server.removeServerMessageHandler("Messages", messagesHandler);
     _server.removeEventHandler("(~ not authenticated ~)", pleaseLogInHandler);
     _server.removeEventHandler("auth", isAuthenticatedSet);
     _server.stop();

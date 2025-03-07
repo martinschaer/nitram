@@ -199,7 +199,7 @@ async fn main() -> std::io::Result<()> {
         .add_public_handler("GetToken", get_token_handler)
         .add_private_handler("SendMessage", send_message_handler)
         .add_private_handler("GetUser", get_user_handler)
-        .add_signal_handler("Messages", messages_handler);
+        .add_server_message_handler("Messages", messages_handler);
     let nitram = cb.build(inner_arc);
     HttpServer::new(move || {
         App::new()
