@@ -10,11 +10,15 @@ Opinionated RPC server for Rust and Typescript.
 ## Publishing:
 
 ```sh
-# NPM
+# -- NPM
 cd packages/nitram
-bun pm pack
+# bun pm pack --dry-run
+# bun pm pack
+# bun publish --dry-run
 bun publish
 cd ../..
-# Crate
+
+# -- Crate
+# cargo publish --dry-run
 cargo publish
 ```
