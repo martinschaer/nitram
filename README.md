@@ -6,3 +6,15 @@ Opinionated RPC server for Rust and Typescript.
 
 - Quick start guide
 - TODO(6cd5): better DBSessionId
+
+## Publishing:
+
+```sh
+# NPM
+cd packages/nitram
+bun pm pack
+bun publish
+cd ../..
+# Crate
+cargo publish
+```
