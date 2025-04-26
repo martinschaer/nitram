@@ -31,7 +31,7 @@ function wsStateToString(state: number) {
 // =============================================================================
 export class Server {
   // -- Public
-  is_authenticated = false;
+  is_authenticated: string | null = null;
 
   // -- Private
   private _stop = false;
@@ -183,9 +183,9 @@ export class Server {
       method: "Authenticate",
       params: { token },
     }).then(
-      (res) => {
-        console.log("^_^ Authenticated", res);
-        this.is_authenticated = true;
+      (user_id) => {
+        console.log("^_^ Authenticated", user_id);
+        this.is_authenticated = user_id;
         this.triggerEvent("auth", true);
         return true;
       },
@@ -198,7 +198,7 @@ export class Server {
   }
 
   logout() {
-    this.is_authenticated = false;
+    this.is_authenticated = null;
     this.triggerEvent("auth", false);
     localStorage.removeItem("token");
   }

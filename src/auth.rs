@@ -92,7 +92,7 @@ pub fn parse_token(token: impl Into<String>) -> Result<ParsedToken> {
 nitram_handler!(
     AuthenticateAPI,    // Method name
     AuthenticateParams, // Params type
-    bool,               // Return type
+    String,             // Return type
     // Params
     token: String
 );

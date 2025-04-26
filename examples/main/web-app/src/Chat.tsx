@@ -10,6 +10,7 @@ import { MessagesAPI, SendMessageAPI } from "bindings/API";
 //
 import { BackendContext, messagesHandler } from "./BackendContext";
 import { messages, setMessages } from "./store";
+import User from "./User";
 
 // =============================================================================
 // Component
@@ -74,8 +75,11 @@ function Chat() {
       <button onClick={handleLogout}>Logout</button>
       <div>
         <h1>Chat</h1>
-        <input type="text" ref={(el) => (input = el)} placeholder="Message" />
-        <button onClick={handleMethod}>Send</button>
+        <div>
+          <User />:
+          <input type="text" ref={(el) => (input = el)} placeholder="Message" />
+          <button onClick={handleMethod}>Send</button>
+        </div>
       </div>
       <div>
         <h2>Messages</h2>
