@@ -4,6 +4,7 @@ default:
 # Generate bindings
 bindings:
     rm -rf bindings
+    rm -rf packages/nitram/bindings
     # Generate main bindings
     cargo test
     cp -r bindings packages/nitram/bindings
