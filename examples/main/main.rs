@@ -124,7 +124,7 @@ async fn authenticate_handler(
     resource: NitramResource,
     anonym_session: WSSessionAnonymResource,
     params: AuthenticateParams,
-) -> MethodResult<bool> {
+) -> MethodResult<String> {
     let db = resource.db.lock().await;
     let token = params.token.clone();
     let parsed_token: ParsedToken = parse_token(&token).map_err(|_| MethodError::Server)?;
@@ -144,7 +144,7 @@ async fn authenticate_handler(
             };
             nitram.auth_ws_session(anonym_session.ws_session_id, db_session);
 
-            Ok(true)
+            Ok(user_id)
         }
         None => {
             tracing::debug!("Invalid token. Not surprising since the DB is not persistent. Front-end should clear the token.");

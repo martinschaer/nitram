@@ -1,9 +1,10 @@
-import { useContext } from "solid-js";
+import { createSignal, useContext, createEffect } from "solid-js";
 
 // -----------------------------------------------------------------------------
 // Nitram bindings
 //
-import { GetTokenAPI } from "bindings/API";
+import { GetUserAPI } from "bindings/API";
+import { User as UserModel } from "bindings/User";
 
 // -----------------------------------------------------------------------------
 // Local imports
@@ -13,9 +14,9 @@ import { BackendContext } from "./BackendContext";
 // =============================================================================
 // Component
 // =============================================================================
-function Login() {
-  // -- HTML Elements
-  let input!: HTMLInputElement;
+function User() {
+  // -- State
+  const [user, setUser] = createSignal<UserModel|null>(null);
 
   // -- Nitram context
   const { server } = useContext(BackendContext) ?? { server: null };
@@ -24,25 +25,29 @@ function Login() {
   }
 
   // -- Callbacks
-  const handleLogin = () => {
-    server()
-      .request<GetTokenAPI>({
-        method: "GetToken",
-        params: { user_name: input.value },
-      })
-      .then((token) => {
-        server().auth(token);
+
+  // -- Lifecycle
+  createEffect(() => {
+    const s = server();
+    const user_id = s ? s.is_authenticated : null;
+    if (user_id) {
+      s.request<GetUserAPI>({
+        method: "GetUser",
+        params: {
+          id: user_id
+        }
+      }).then((user) => {
+        setUser(user);
       });
-  };
+    }
+  });
 
   // -- Render
   return (
-    <>
-      <h1>Hello</h1>
-      <input type="text" ref={(el) => (input = el)} placeholder="Name" />
-      <button onClick={handleLogin}>Login</button>
-    </>
+    <span>
+      {user()?.name}
+    </span>
   );
 }
 
-export default Login;
+export default User;
