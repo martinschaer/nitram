@@ -41,7 +41,6 @@ function Chat() {
     const _channel = channel();
     server()
       .request<SendMessageAPI>({
-        id: "fake",
         method: "SendMessage",
         params: { channel: _channel, message: input.value },
       })

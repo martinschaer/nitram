@@ -32,7 +32,6 @@ function User() {
     const user_id = s ? s.is_authenticated : null;
     if (user_id) {
       s.request<GetUserAPI>({
-        id: "fake",
         method: "GetUser",
         params: {
           id: user_id

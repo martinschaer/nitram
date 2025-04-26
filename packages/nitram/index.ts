@@ -4,12 +4,14 @@ import type { NitramRequest } from "./bindings/NitramRequest";
 import type { JsonValue } from "./bindings/serde_json/JsonValue";
 import type { AuthenticateAPI } from "./bindings/API";
 
+type Handler = (data: any) => void;
 type EventHandler = (data: any) => void;
 type ServerMessageHandler = (data: any) => void;
 type QueueItem = NitramRequest & {
   resolve: (val: any) => any;
   reject: () => any;
 };
+type HandlerByRequestId = Map<string, Handler>;
 
 function wsStateToString(state: number) {
   switch (state) {
@@ -26,6 +28,10 @@ function wsStateToString(state: number) {
   }
 }
 
+function randomId(length = 6) {
+    return Math.random().toString(36).substring(2, length + 2);
+};
+
 // =============================================================================
 // Server
 // =============================================================================
@@ -37,7 +43,7 @@ export class Server {
   private _stop = false;
   private lastState: number = WebSocket.CLOSED;
   private ws: WebSocket;
-  private handlers: Map<string, (data: any) => void> = new Map();
+  private handlers: HandlerByRequestId = new Map();
   private errorHandlers: Map<string, (data: any) => void> = new Map();
   private eventHandlers: Map<string, EventHandler[]> = new Map();
   private serverMessageHandlers: Map<string, ServerMessageHandler[]> =
@@ -82,7 +88,7 @@ export class Server {
       ) {
         const messageData = data as unknown as NitramResponse;
         if (messageData.ok) {
-          let handler = this.handlers.get(messageData.method);
+          let handler = this.handlers.get(messageData.id);
           if (handler) handler(messageData.response);
           else console.warn("!!! Unhandled message", messageData);
         } else {
@@ -124,7 +130,6 @@ export class Server {
       // Send queued requests
       this.queue.forEach((req) => {
         this.request({
-          id: req.id,
           method: req.method,
           params: req.params,
         }).then(req.resolve, req.reject);
@@ -152,19 +157,19 @@ export class Server {
   }
 
   private registerHandler(
-    msg: string,
-    handler: (data: any) => void,
-    errorHandler: (data: any) => void,
+    requestId: string,
+    handler: Handler,
+    errorHandler: Handler,
   ) {
     // console.log(`Registering handler for ${msg}`);
-    this.handlers.set(msg, handler);
-    this.errorHandlers.set(msg, errorHandler);
+    this.handlers.set(requestId, handler);
+    this.errorHandlers.set(requestId, errorHandler);
   }
 
-  private unregisterHandler(msg: string) {
-    // console.log(`Unregistering handler for ${msg}`);
-    this.handlers.delete(msg);
-    this.errorHandlers.delete(msg);
+  private unregisterHandler(requestId: string) {
+    // console.log(`Unregistering handler for ${requestId}`);
+    this.handlers.delete(requestId);
+    this.errorHandlers.delete(requestId);
   }
 
   // ---------------------------------------------------------------------------
@@ -179,7 +184,6 @@ export class Server {
   async auth(token: string): Promise<boolean> {
     localStorage.setItem("token", token);
     return this.request<AuthenticateAPI>({
-      id: "fake",
       method: "Authenticate",
       params: { token },
     }).then(
@@ -252,7 +256,6 @@ export class Server {
       handlers.push(handler);
     }
     this.request({
-      id: "fake",
       method: "nitram_topic_register",
       params: { topic: key, handler_params: params },
     });
@@ -263,7 +266,6 @@ export class Server {
       this.serverMessageHandlers.delete(key);
     }
     this.request({
-      id: "fake",
       method: "nitram_topic_deregister",
       params: { topic: key },
     });
@@ -272,17 +274,24 @@ export class Server {
   // ---------------------------------------------------------------------------
   // -- Request
   async request<T extends { i: JsonValue; o: JsonValue }>(
-    payload: NitramRequest & { params: T["i"] },
+    req: { method: string, params: T["i"] },
   ) {
+    let request_id = randomId();
+    let payload : NitramRequest = {
+      id: request_id,
+      method: req.method,
+      params: req.params,
+    };
+
     let promise = new Promise<T["o"]>((resolve, reject) => {
       this.registerHandler(
-        payload.method,
+        request_id,
         (response: T["o"]) => {
-          console.log("===", payload.method, response);
+          console.log("===", req.method, response);
           resolve(response);
         },
         (error: string) => {
-          console.error("===", payload.method, error);
+          console.error("===", req.method, error);
           if (error === "(~ not authenticated ~)") {
             this.triggerEvent("(~ not authenticated ~)", null);
           }
@@ -299,12 +308,12 @@ export class Server {
       } catch (error) {
         throw error;
       } finally {
-        this.unregisterHandler(payload.method);
+        this.unregisterHandler(request_id);
       }
     } else {
       console.log("Queueing request", payload);
       let item: QueueItem = {
-        id: payload.id,
+        id: "queued", // this is ignored
         method: payload.method,
         params: payload.params,
         resolve: () => {},

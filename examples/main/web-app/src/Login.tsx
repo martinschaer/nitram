@@ -27,7 +27,6 @@ function Login() {
   const handleLogin = () => {
     server()
       .request<GetTokenAPI>({
-        id: "fake",
         method: "GetToken",
         params: { user_name: input.value },
       })
