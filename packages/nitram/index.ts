@@ -92,7 +92,7 @@ export class Server {
           if (handler) handler(messageData.response);
           else console.warn("!!! Unhandled message", messageData);
         } else {
-          let handler = this.errorHandlers.get(messageData.method);
+          let handler = this.errorHandlers.get(messageData.id);
           if (handler) handler(messageData.response);
           else console.warn("!!! Unhandled error", messageData);
         }

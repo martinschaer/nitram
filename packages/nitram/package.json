@@ -1,6 +1,6 @@
 {
   "name": "nitram",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "author": "Martin Schaer <martin@schaerweb.com>",
   "description": "Opinionated RPC client",
   "keywords": ["rpc", "typescript"],
