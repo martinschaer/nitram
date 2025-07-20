@@ -107,17 +107,13 @@ nitram_handler!(
 async fn send_message_handler(
     resource: NitramResource,
     session: WSSessionAuthedResource,
-    store: Store,
+    mut store: Store,
     params: SendMessageParams,
 ) -> MethodResult<Vec<String>> {
-    let mut store = store.kv.lock().await;
+    let count = store.get::<i32>("count").await.unwrap_or_default();
     let now = Utc::now();
-    store.insert("last".to_string(), json!(now));
-    let count: i32 = store
-        .get("count")
-        .and_then(|x| serde_json::from_value(x.clone()).unwrap_or_default())
-        .unwrap_or_default();
-    store.insert("count".to_string(), json!(count + 1));
+    store.insert("last", json!(now)).await;
+    store.insert("count", json!(count + 1)).await;
     let mut db = resource.db.lock().await;
     db.insert_message(&params.channel, params.message, &session.user_id);
     Ok(db.messages.get(&params.channel).unwrap().clone())
@@ -176,9 +172,8 @@ async fn messages_handler(
     store: Store,
     params: MessagesParams,
 ) -> MethodResult<MessagesOutput> {
-    let store = store.kv.lock().await;
-    let last = store.get("last");
-    let count = store.get("count");
+    let last = store.get::<DateTime<Utc>>("last").await;
+    let count = store.get::<i32>("count").await;
 
     let db = resource.db.lock().await;
     Ok(MessagesOutput {
@@ -187,10 +182,8 @@ async fn messages_handler(
             .get(&params.channel)
             .cloned()
             .unwrap_or_default(),
-        last: last.map(|last| serde_json::from_value(last.clone()).unwrap_or_default()),
-        count: count
-            .map(|count| serde_json::from_value(count.clone()).unwrap_or_default())
-            .unwrap_or_default(),
+        last,
+        count: count.unwrap_or_default(),
     })
 }
 nitram_handler!(

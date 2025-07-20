@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use rpc_router::RpcResource;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -60,6 +61,17 @@ impl Store {
         Self {
             kv: Arc::new(Mutex::new(HashMap::new())),
         }
+    }
+    pub async fn get<T: DeserializeOwned>(&self, key: &str) -> Option<T> {
+        let store = self.kv.lock().await;
+        match store.get(key).cloned() {
+            Some(x) => serde_json::from_value(x).ok(),
+            None => None,
+        }
+    }
+    pub async fn insert(&mut self, key: &str, value: Value) -> Option<Value> {
+        let mut store = self.kv.lock().await;
+        store.insert(key.to_string(), value)
     }
 }
 
