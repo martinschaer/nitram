@@ -1,5 +1,10 @@
 use chrono::{DateTime, Utc};
+use rpc_router::RpcResource;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 use crate::auth::generate_token;
 use crate::error::Result;
@@ -43,4 +48,22 @@ impl DBSession {
             expires_at,
         })
     }
+}
+
+#[derive(Clone, RpcResource)]
+pub struct Store {
+    pub kv: Arc<Mutex<HashMap<String, Value>>>,
+}
+
+impl Store {
+    pub fn new() -> Self {
+        Self {
+            kv: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+}
+
+pub struct UserPayload {
+    pub db_session: DBSession,
+    pub store: Store,
 }
