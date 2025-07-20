@@ -1,6 +1,8 @@
 use actix_files::NamedFile;
 use actix_web::{middleware::Logger, web, App, HttpServer};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -12,7 +14,7 @@ use uuid::Uuid;
 use nitram::{
     auth::{parse_token, WSSessionAnonymResource, WSSessionAuthedResource},
     error::{MethodError, MethodResult},
-    models::{AuthStrategy, DBSession, ParsedToken},
+    models::{AuthStrategy, DBSession, ParsedToken, Store},
     nitram_handler, ws, AuthenticateParams, FromResources, IdParams, IntoParams, NitramBuilder,
     NitramInner,
 };
@@ -105,8 +107,13 @@ nitram_handler!(
 async fn send_message_handler(
     resource: NitramResource,
     session: WSSessionAuthedResource,
+    mut store: Store,
     params: SendMessageParams,
 ) -> MethodResult<Vec<String>> {
+    let count = store.get::<i32>("count").await.unwrap_or_default();
+    let now = Utc::now();
+    store.insert("last", json!(now)).await;
+    store.insert("count", json!(count + 1)).await;
     let mut db = resource.db.lock().await;
     db.insert_message(&params.channel, params.message, &session.user_id);
     Ok(db.messages.get(&params.channel).unwrap().clone())
@@ -153,21 +160,36 @@ async fn authenticate_handler(
     }
 }
 
+#[derive(Clone, Deserialize, Serialize, TS)]
+struct MessagesOutput {
+    messages: Vec<String>,
+    last: Option<DateTime<Utc>>,
+    count: i32,
+}
+
 async fn messages_handler(
     resource: NitramResource,
+    store: Store,
     params: MessagesParams,
-) -> MethodResult<Vec<String>> {
+) -> MethodResult<MessagesOutput> {
+    let last = store.get::<DateTime<Utc>>("last").await;
+    let count = store.get::<i32>("count").await;
+
     let db = resource.db.lock().await;
-    Ok(db
-        .messages
-        .get(&params.channel)
-        .cloned()
-        .unwrap_or_default())
+    Ok(MessagesOutput {
+        messages: db
+            .messages
+            .get(&params.channel)
+            .cloned()
+            .unwrap_or_default(),
+        last,
+        count: count.unwrap_or_default(),
+    })
 }
 nitram_handler!(
     MessagesAPI,    // Method name
     MessagesParams, // Params type
-    Vec<String>,    // Return type
+    MessagesOutput, // Return type
     // Params
     channel: String
 );

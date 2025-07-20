@@ -27,8 +27,8 @@ import { messages, setMessages } from "./store";
 // Handlers
 //
 export const messagesHandler = (channel: string, payload: MessagesAPI["o"]) => {
-  if (Array.isArray(payload)) {
-    setMessages({ ...messages, [channel]: payload });
+  if (Array.isArray(payload.messages)) {
+    setMessages({ ...messages, [channel]: payload.messages });
   } else {
     console.error("Payload type is different than expected", payload);
   }

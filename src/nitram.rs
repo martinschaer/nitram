@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::auth::{NitramSession, WSSessionAnonymResource, WSSessionAuthedResource};
 use crate::error::{Error, MethodError, Result};
 use crate::messages::{NitramRequest, NitramResponse, NitramServerMessage};
-use crate::models::DBSession;
+use crate::models::{DBSession, UserPayload};
 use crate::nice::{Nice, NiceMessage};
 
 pub struct NitramInner {
@@ -90,14 +90,18 @@ impl Nitram {
         );
     }
 
-    async fn is_auth(&self, ws_session_id: &Uuid) -> Result<DBSession> {
+    async fn is_auth(&self, ws_session_id: &Uuid) -> Result<UserPayload> {
         let inner = self.inner.lock().await;
         tracing::debug!("WS sessions: {:?}", inner.ws_sessions);
         match inner.ws_sessions.get(ws_session_id) {
             Some(NitramSession::Authenticated {
                 db_session,
                 topics_registered: _,
-            }) => Ok(db_session.clone()),
+                store,
+            }) => Ok(UserPayload {
+                db_session: db_session.clone(),
+                store: store.clone(),
+            }),
             Some(NitramSession::Anonymous) => Err(Error::NotAuthorized),
             _ => Err(Error::NotAuthenticated),
         }
@@ -134,6 +138,7 @@ impl Nitram {
                         Some(NitramSession::Authenticated {
                             db_session: _,
                             topics_registered,
+                            store: _,
                         }) => {
                             if is_register {
                                 topics_registered.insert(topic.to_string(), params);
@@ -174,11 +179,14 @@ impl Nitram {
                 .map(|r| r.value)
                 .map_err(|e| e.into())
         } else if is_private {
-            let db_session = self.is_auth(ws_session_id).await?;
+            let user_payload = self.is_auth(ws_session_id).await?;
             let session_resource = WSSessionAuthedResource {
-                user_id: db_session.user_id,
+                user_id: user_payload.db_session.user_id,
             };
-            let rpc_resources = Resources::builder().append(session_resource).build();
+            let rpc_resources = Resources::builder()
+                .append(session_resource)
+                .append(user_payload.store)
+                .build();
             self.rpc_router_private
                 .call_with_resources(rpc_request, rpc_resources)
                 .await
@@ -285,6 +293,7 @@ impl Nitram {
             if let NitramSession::Authenticated {
                 db_session,
                 topics_registered,
+                store,
             } = session
             {
                 // Call registered server message handlers
@@ -299,8 +308,10 @@ impl Nitram {
                             let session_resource = WSSessionAuthedResource {
                                 user_id: db_session.user_id.clone(),
                             };
-                            let rpc_resources =
-                                Resources::builder().append(session_resource).build();
+                            let rpc_resources = Resources::builder()
+                                .append(session_resource)
+                                .append(store.clone())
+                                .build();
 
                             let result: Result<Value> = self
                                 .rpc_router_server_messages

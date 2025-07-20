@@ -8,6 +8,7 @@ use std::{collections::HashMap, fmt};
 use ts_rs::TS;
 use uuid::Uuid;
 
+use crate::models::Store;
 use crate::nitram_handler;
 use crate::{
     error::{Error, Result},
@@ -22,7 +23,7 @@ pub struct WSSessionAnonymResource {
 #[derive(Clone, RpcResource)]
 pub struct WSSessionAuthedResource {
     pub user_id: String,
-    // db_session_id: Uuid,
+    // pub ws_session_id: Uuid,
 }
 
 #[derive(Clone)]
@@ -31,6 +32,7 @@ pub enum NitramSession {
     Authenticated {
         db_session: DBSession,
         topics_registered: HashMap<String, Value>,
+        store: Store,
     },
 }
 
@@ -39,6 +41,7 @@ impl NitramSession {
         NitramSession::Authenticated {
             db_session,
             topics_registered: HashMap::new(),
+            store: Store::new(),
         }
     }
 }
@@ -50,6 +53,7 @@ impl fmt::Debug for NitramSession {
             NitramSession::Authenticated {
                 db_session,
                 topics_registered,
+                store: _,
             } => {
                 write!(
                     f,
