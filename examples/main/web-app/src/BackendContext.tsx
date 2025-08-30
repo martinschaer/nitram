@@ -20,7 +20,7 @@ import { MessagesAPI } from "bindings/API";
 // -----------------------------------------------------------------------------
 // Local imports
 //
-import { Server } from "nitram";
+import { Server, type EventHandler } from "nitram";
 import { messages, setMessages } from "./store";
 
 // -----------------------------------------------------------------------------
@@ -55,7 +55,7 @@ export const BackendProvider: ParentComponent<{
   );
 
   // -- Callbacks
-  const pleaseLogInHandler = (_event: string) => {
+  const pleaseLogInHandler:EventHandler = (_event: string) => {
     isAuthenticatedSet(false);
   };
 

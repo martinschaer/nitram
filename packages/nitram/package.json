@@ -1,9 +1,12 @@
 {
   "name": "nitram",
-  "version": "0.3.1",
+  "version": "0.3.3",
   "author": "Martin Schaer <martin@schaerweb.com>",
   "description": "Opinionated RPC client",
-  "keywords": ["rpc", "typescript"],
+  "keywords": [
+    "rpc",
+    "typescript"
+  ],
   "license": "Apache-2.0",
   "module": "index.ts",
   "type": "module",

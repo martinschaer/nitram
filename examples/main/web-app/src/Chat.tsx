@@ -11,6 +11,7 @@ import { MessagesAPI, SendMessageAPI } from "bindings/API";
 import { BackendContext, messagesHandler } from "./BackendContext";
 import { messages, setMessages } from "./store";
 import User from "./User";
+import { ServerMessageHandler } from "nitram";
 
 // =============================================================================
 // Component
@@ -53,7 +54,7 @@ function Chat() {
       });
   };
 
-  const channelHandler = (channel: string) => {
+  const channelHandler = (channel: string):ServerMessageHandler => {
     return (data: MessagesAPI["o"]) => messagesHandler(channel, data);
   };
 
@@ -71,13 +72,13 @@ function Chat() {
   // -- Render
   return (
     <>
-      <button onClick={handleLogout}>Logout</button>
+      <button type="button" onClick={handleLogout}>Logout</button>
       <div>
         <h1>Chat</h1>
         <div>
           <User />:
-          <input type="text" ref={(el) => (input = el)} placeholder="Message" />
-          <button onClick={handleMethod}>Send</button>
+          <input type="text" ref={(el) => { input = el }} placeholder="Message" />
+          <button type="button" onClick={handleMethod}>Send</button>
         </div>
       </div>
       <div>
