@@ -1,14 +1,7 @@
-import { useContext } from "solid-js";
+import type { GetTokenAPI } from "bindings/API";
 
-// -----------------------------------------------------------------------------
-// Nitram bindings
-//
-import { GetTokenAPI } from "bindings/API";
-
-// -----------------------------------------------------------------------------
 // Local imports
-//
-import { BackendContext } from "./BackendContext";
+import { useBackend } from "./BackendContext";
 
 // =============================================================================
 // Component
@@ -18,10 +11,7 @@ function Login() {
   let input!: HTMLInputElement;
 
   // -- Nitram context
-  const { server } = useContext(BackendContext) ?? { server: null };
-  if (!server) {
-    throw new Error("BackendContext not found");
-  }
+  const { server } = useBackend();
 
   // -- Callbacks
   const handleLogin = () => {
@@ -39,8 +29,8 @@ function Login() {
   return (
     <>
       <h1>Hello</h1>
-      <input type="text" ref={(el) => (input = el)} placeholder="Name" />
-      <button onClick={handleLogin}>Login</button>
+      <input type="text" ref={(el) => { input = el }} placeholder="Name" />
+      <button type="button" onClick={handleLogin}>Login</button>
     </>
   );
 }

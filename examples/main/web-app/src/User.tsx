@@ -1,15 +1,9 @@
-import { createSignal, useContext, createEffect } from "solid-js";
+import type { GetUserAPI } from "bindings/API";
+import type { User as UserModel } from "bindings/User";
+import { createEffect, createSignal } from "solid-js";
 
-// -----------------------------------------------------------------------------
-// Nitram bindings
-//
-import { GetUserAPI } from "bindings/API";
-import { User as UserModel } from "bindings/User";
-
-// -----------------------------------------------------------------------------
 // Local imports
-//
-import { BackendContext } from "./BackendContext";
+import { useBackend } from "./BackendContext";
 
 // =============================================================================
 // Component
@@ -19,10 +13,7 @@ function User() {
   const [user, setUser] = createSignal<UserModel|null>(null);
 
   // -- Nitram context
-  const { server } = useContext(BackendContext) ?? { server: null };
-  if (!server) {
-    throw new Error("BackendContext not found");
-  }
+  const { server } = useBackend();
 
   // -- Callbacks
 
