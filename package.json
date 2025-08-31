@@ -1,9 +1,12 @@
 {
   "name": "nitram-monorepo",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "type": "module",
   "workspaces": [
     "packages/nitram",
     "examples/main/web-app"
-  ]
+  ],
+  "devDependencies": {
+    "@biomejs/biome": "2.2.2"
+  }
 }

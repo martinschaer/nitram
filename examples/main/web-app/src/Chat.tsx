@@ -1,14 +1,9 @@
-import { createMemo, createSignal, For, onMount, useContext } from "solid-js";
+import type { MessagesAPI, SendMessageAPI } from "bindings/API";
+import { NitramErrorCode, type ServerMessageHandler } from "nitram";
+import { createMemo, createSignal, For, onMount } from "solid-js";
 
-// -----------------------------------------------------------------------------
-// Nitram bindings
-//
-import { MessagesAPI, SendMessageAPI } from "bindings/API";
-
-// -----------------------------------------------------------------------------
 // Local imports
-//
-import { BackendContext, messagesHandler } from "./BackendContext";
+import { messagesHandler, useBackend } from "./BackendContext";
 import { messages, setMessages } from "./store";
 import User from "./User";
 
@@ -20,16 +15,13 @@ function Chat() {
   let input!: HTMLInputElement;
 
   // -- State
-  let [channel, setChannel] = createSignal("general");
-  let channelMessages = createMemo(() => {
+  const [channel, setChannel] = createSignal("general");
+  const channelMessages = createMemo(() => {
     return messages[channel()] ?? [];
   }, []);
 
   // -- Nitram context
-  const { server } = useContext(BackendContext) ?? { server: null };
-  if (!server) {
-    throw new Error("BackendContext not found");
-  }
+  const { server } = useBackend();
 
   // -- Callbacks
   const handleLogout = () => {
@@ -48,12 +40,22 @@ function Chat() {
         input.value = "";
         setMessages({ ...messages, [_channel]: channel_messages });
       })
+      .catch((err) => {
+        if (
+          typeof err === "object" &&
+          err.error === NitramErrorCode.DuplicateRequestQueued
+        ) {
+          input.value = "";
+        } else {
+          console.error("Error sending message:", err);
+        }
+      })
       .finally(() => {
         input.disabled = false;
       });
   };
 
-  const channelHandler = (channel: string) => {
+  const channelHandler = (channel: string): ServerMessageHandler => {
     return (data: MessagesAPI["o"]) => messagesHandler(channel, data);
   };
 
@@ -71,13 +73,23 @@ function Chat() {
   // -- Render
   return (
     <>
-      <button onClick={handleLogout}>Logout</button>
+      <button type="button" onClick={handleLogout}>
+        Logout
+      </button>
       <div>
         <h1>Chat</h1>
         <div>
           <User />:
-          <input type="text" ref={(el) => (input = el)} placeholder="Message" />
-          <button onClick={handleMethod}>Send</button>
+          <input
+            type="text"
+            ref={(el) => {
+              input = el;
+            }}
+            placeholder="Message"
+          />
+          <button type="button" onClick={handleMethod}>
+            Send
+          </button>
         </div>
       </div>
       <div>

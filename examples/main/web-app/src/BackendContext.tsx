@@ -1,26 +1,21 @@
 /* @refresh reload */
+import type { MessagesAPI } from "bindings/API";
+import { type EventHandler, Server } from "nitram";
 import {
-  Accessor,
-  JSX,
-  Match,
-  ParentComponent,
-  Switch,
+  type Accessor,
   createContext,
   createMemo,
   createSignal,
+  type JSX,
+  Match,
   onCleanup,
   onMount,
+  type ParentComponent,
+  Switch,
+  useContext,
 } from "solid-js";
 
-// -----------------------------------------------------------------------------
-// Nitram bindings
-//
-import { MessagesAPI } from "bindings/API";
-
-// -----------------------------------------------------------------------------
 // Local imports
-//
-import { Server } from "nitram";
 import { messages, setMessages } from "./store";
 
 // -----------------------------------------------------------------------------
@@ -49,13 +44,13 @@ export const BackendProvider: ParentComponent<{
   publicChildren: JSX.Element;
 }> = (props) => {
   // -- State
-  let server = createMemo(() => new Server());
-  let [isAuthenticated, isAuthenticatedSet] = createSignal<boolean | null>(
+  const server = createMemo(() => new Server());
+  const [isAuthenticated, isAuthenticatedSet] = createSignal<boolean | null>(
     null,
   );
 
   // -- Callbacks
-  const pleaseLogInHandler = (_event: string) => {
+  const pleaseLogInHandler: EventHandler = (_event: unknown) => {
     isAuthenticatedSet(false);
   };
 
@@ -88,3 +83,11 @@ export const BackendProvider: ParentComponent<{
     </BackendContext.Provider>
   );
 };
+
+export function useBackend() {
+  const context = useContext(BackendContext);
+  if (!context) {
+    throw new Error("useBackend must be used within a BackendProvider");
+  }
+  return context;
+}

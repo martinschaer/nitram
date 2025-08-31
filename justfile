@@ -25,3 +25,9 @@ run-example: build-example
 
 pack:
     cd packages/nitram && bun pm pack
+
+format:
+    bunx @biomejs/biome format --write packages/nitram
+
+check *ARGS:
+    bunx @biomejs/biome check --write {{ARGS}} packages/nitram

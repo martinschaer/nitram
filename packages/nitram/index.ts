@@ -1,15 +1,26 @@
+import type { AuthenticateAPI } from "./bindings/API";
+import type { NitramRequest } from "./bindings/NitramRequest";
 import type { NitramResponse } from "./bindings/NitramResponse";
 import type { NitramServerMessage } from "./bindings/NitramServerMessage";
-import type { NitramRequest } from "./bindings/NitramRequest";
 import type { JsonValue } from "./bindings/serde_json/JsonValue";
-import type { AuthenticateAPI } from "./bindings/API";
+import { NitramError, NitramErrorCode } from "./error";
+import { objectHash } from "./hash";
 
-type Handler = (data: any) => void;
-type EventHandler = (data: any) => void;
-type ServerMessageHandler = (data: any) => void;
+export { NitramError, NitramErrorCode };
+
+// biome-ignore lint/suspicious/noExplicitAny: see below what didn't work
+type Handler = (x: any) => void;
+// These didn't work:
+// type Handler = <T extends JsonValue>(x: T) => void;
+// type Handler = (x: JsonValue) => void;
+// type Handler = (x: unknown) => void;
+
+export type EventHandler = Handler;
+export type ServerMessageHandler = Handler;
 type QueueItem = NitramRequest & {
-  resolve: (val: any) => any;
-  reject: () => any;
+  hash: number;
+  resolve: Handler;
+  reject: (e: unknown) => void;
 };
 type HandlerByRequestId = Map<string, Handler>;
 
@@ -29,8 +40,10 @@ function wsStateToString(state: number) {
 }
 
 function randomId(length = 6) {
-    return Math.random().toString(36).substring(2, length + 2);
-};
+  return Math.random()
+    .toString(36)
+    .substring(2, length + 2);
+}
 
 // =============================================================================
 // Server
@@ -44,7 +57,7 @@ export class Server {
   private lastState: number = WebSocket.CLOSED;
   private ws: WebSocket;
   private handlers: HandlerByRequestId = new Map();
-  private errorHandlers: Map<string, (data: any) => void> = new Map();
+  private errorHandlers: Map<string, (data: JsonValue) => void> = new Map();
   private eventHandlers: Map<string, EventHandler[]> = new Map();
   private serverMessageHandlers: Map<string, ServerMessageHandler[]> =
     new Map();
@@ -64,7 +77,7 @@ export class Server {
   private process_message_from_server(data: JsonValue) {
     if (data === null) {
       // - null
-    } else if (data.hasOwnProperty("topic")) {
+    } else if (typeof data === "object" && Object.hasOwn(data, "topic")) {
       // - server messages
       const serverMessageData = data as NitramServerMessage;
 
@@ -82,17 +95,18 @@ export class Server {
     } else {
       // - message responses
       if (
-        data.hasOwnProperty("method") &&
-        data.hasOwnProperty("ok") &&
-        data.hasOwnProperty("response")
+        typeof data === "object" &&
+        Object.hasOwn(data, "method") &&
+        Object.hasOwn(data, "ok") &&
+        Object.hasOwn(data, "response")
       ) {
         const messageData = data as unknown as NitramResponse;
         if (messageData.ok) {
-          let handler = this.handlers.get(messageData.id);
+          const handler = this.handlers.get(messageData.id);
           if (handler) handler(messageData.response);
           else console.warn("!!! Unhandled message", messageData);
         } else {
-          let handler = this.errorHandlers.get(messageData.id);
+          const handler = this.errorHandlers.get(messageData.id);
           if (handler) handler(messageData.response);
           else console.warn("!!! Unhandled error", messageData);
         }
@@ -138,7 +152,7 @@ export class Server {
   }
 
   private check_connection() {
-    if (this.lastState != this.ws.readyState) {
+    if (this.lastState !== this.ws.readyState) {
       this.lastState = this.ws.readyState;
       console.log(`••• Server state ${wsStateToString(this.ws.readyState)}`);
     }
@@ -231,12 +245,14 @@ export class Server {
     }
   }
 
-  triggerEvent(event: string, data: any) {
+  triggerEvent(event: string, data: JsonValue) {
     if (this.eventHandlers.has(event)) {
       console.log("@@@", event, data);
       const handlers = this.eventHandlers.get(event);
       if (handlers) {
-        handlers.forEach((handler) => handler(data));
+        handlers.forEach((handler) => {
+          handler(data);
+        });
       }
     }
   }
@@ -273,58 +289,75 @@ export class Server {
 
   // ---------------------------------------------------------------------------
   // -- Request
-  async request<T extends { i: JsonValue; o: JsonValue }>(
-    req: { method: string, params: T["i"] },
-  ) {
-    let request_id = randomId();
-    let payload : NitramRequest = {
+  async request<T extends { i: JsonValue; o: JsonValue }>(req: {
+    method: string;
+    params: T["i"];
+  }) {
+    const request_id = randomId();
+    const payload: NitramRequest = {
       id: request_id,
       method: req.method,
       params: req.params,
     };
 
-    let promise = new Promise<T["o"]>((resolve, reject) => {
-      this.registerHandler(
-        request_id,
-        (response: T["o"]) => {
-          console.log("===", req.method, response);
-          resolve(response);
-        },
-        (error: string) => {
-          console.error("===", req.method, error);
-          if (error === "(~ not authenticated ~)") {
-            this.triggerEvent("(~ not authenticated ~)", null);
-          }
-          reject(error);
-        },
-      );
-    });
-
     if (this.ws.readyState === WebSocket.OPEN) {
+      // Connection open -------------------------------------------------------
+      const promise = new Promise<T["o"]>((resolve, reject) => {
+        this.registerHandler(
+          request_id,
+          (response: T["o"]) => {
+            console.log("===", req.method, response);
+            resolve(response);
+          },
+          (error) => {
+            console.error("===", req.method, error);
+            if (error === "(~ not authenticated ~)") {
+              this.triggerEvent("(~ not authenticated ~)", null);
+            }
+            reject(error);
+          },
+        );
+      });
       this.ws.send(JSON.stringify(payload));
       try {
-        let res = await promise;
+        const res = await promise;
         return res;
-      } catch (error) {
-        throw error;
       } finally {
         this.unregisterHandler(request_id);
       }
     } else {
-      console.log("Queueing request", payload);
-      let item: QueueItem = {
-        id: "queued", // this is ignored
+      // Connection closed -----------------------------------------------------
+      const hash = objectHash({
         method: payload.method,
         params: payload.params,
-        resolve: () => {},
-        reject: () => {},
-      };
-      const promise = new Promise<T["o"]>((res, rej) => {
-        item.resolve = res;
-        item.reject = rej;
       });
-      this.queue.push(item);
-      return promise;
+      // check if there is already a request with the same hash in the queue
+      const existing = this.queue.find((item) => item.hash === hash);
+      if (!existing) {
+        console.log("Queueing request", payload);
+        const item: QueueItem = {
+          id: request_id,
+          hash,
+          method: payload.method,
+          params: payload.params,
+          resolve: (_) => {},
+          reject: () => {},
+        };
+        const promise = new Promise<T["o"]>((res, rej) => {
+          item.resolve = res;
+          item.reject = rej;
+        });
+        this.queue.push(item);
+        return promise;
+      } else {
+        // return error telling the caller that an identical request is already
+        // queued
+        return Promise.reject(
+          new NitramError(NitramErrorCode.DuplicateRequestQueued, {
+            id: existing.id,
+          }),
+        );
+      }
     }
   }
 }
