@@ -12,8 +12,9 @@ function deterministicStringify(obj: unknown): string {
   }
   // Sort keys to ensure consistent ordering
   const sortedKeys = Object.keys(obj).sort();
+  const _obj: { [key in string]?: unknown } = obj;
   const keyValuePairs = sortedKeys.map(
-    (key) => `${JSON.stringify(key)}:${deterministicStringify(obj[key])}`,
+    (key) => `${JSON.stringify(key)}:${deterministicStringify(_obj[key])}`,
   );
   return `{${keyValuePairs.join(",")}}`;
 }

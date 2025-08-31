@@ -3,21 +3,23 @@ import type { NitramRequest } from "./bindings/NitramRequest";
 import type { NitramResponse } from "./bindings/NitramResponse";
 import type { NitramServerMessage } from "./bindings/NitramServerMessage";
 import type { JsonValue } from "./bindings/serde_json/JsonValue";
+import { NitramError, NitramErrorCode } from "./error";
 import { objectHash } from "./hash";
 
-// TODO: fix this type. Check with `just build-example` and `just check`
-type BaseHandler = <
-  T extends string | number | boolean | null | JsonValue[] | JsonValue,
->(
-  x: T,
-) => void;
+export { NitramError, NitramErrorCode };
 
-type Handler = BaseHandler;
-export type EventHandler = BaseHandler;
-export type ServerMessageHandler = BaseHandler;
+// biome-ignore lint/suspicious/noExplicitAny: see below what didn't work
+type Handler = (x: any) => void;
+// These didn't work:
+// type Handler = <T extends JsonValue>(x: T) => void;
+// type Handler = (x: JsonValue) => void;
+// type Handler = (x: unknown) => void;
+
+export type EventHandler = Handler;
+export type ServerMessageHandler = Handler;
 type QueueItem = NitramRequest & {
   hash: number;
-  resolve: BaseHandler;
+  resolve: Handler;
   reject: (e: unknown) => void;
 };
 type HandlerByRequestId = Map<string, Handler>;
@@ -298,24 +300,24 @@ export class Server {
       params: req.params,
     };
 
-    const promise = new Promise<T["o"]>((resolve, reject) => {
-      this.registerHandler(
-        request_id,
-        (response: T["o"]) => {
-          console.log("===", req.method, response);
-          resolve(response);
-        },
-        (error) => {
-          console.error("===", req.method, error);
-          if (error === "(~ not authenticated ~)") {
-            this.triggerEvent("(~ not authenticated ~)", null);
-          }
-          reject(error);
-        },
-      );
-    });
-
     if (this.ws.readyState === WebSocket.OPEN) {
+      // Connection open -------------------------------------------------------
+      const promise = new Promise<T["o"]>((resolve, reject) => {
+        this.registerHandler(
+          request_id,
+          (response: T["o"]) => {
+            console.log("===", req.method, response);
+            resolve(response);
+          },
+          (error) => {
+            console.error("===", req.method, error);
+            if (error === "(~ not authenticated ~)") {
+              this.triggerEvent("(~ not authenticated ~)", null);
+            }
+            reject(error);
+          },
+        );
+      });
       this.ws.send(JSON.stringify(payload));
       try {
         const res = await promise;
@@ -324,6 +326,7 @@ export class Server {
         this.unregisterHandler(request_id);
       }
     } else {
+      // Connection closed -----------------------------------------------------
       const hash = objectHash({
         method: payload.method,
         params: payload.params,
@@ -350,9 +353,8 @@ export class Server {
         // return error telling the caller that an identical request is already
         // queued
         return Promise.reject(
-          JSON.stringify({
-            error: "Request already queued",
-            detail: { id: existing.id },
+          new NitramError(NitramErrorCode.DuplicateRequestQueued, {
+            id: existing.id,
           }),
         );
       }
