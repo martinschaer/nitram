@@ -35,25 +35,30 @@ impl User {
 
 #[derive(Clone, Default)]
 struct MockDB {
-    users: HashMap<String, User>,
-    messages: HashMap<String, Vec<String>>,
+    users: Arc<Mutex<HashMap<String, User>>>,
+    messages: Arc<Mutex<HashMap<String, Vec<String>>>>,
 }
 impl MockDB {
-    fn insert_user(&mut self, user: User) -> String {
+    async fn insert_user(&mut self, user: User) -> String {
         let user_id = user.id.clone();
-        self.users.insert(user_id.clone(), user);
+        let mut users = self.users.lock().await;
+        users.insert(user_id.clone(), user);
         user_id
     }
-    fn insert_message(&mut self, channel: &str, message: String, user_id: &str) -> () {
-        let user = self.users.get(user_id);
+    async fn insert_message(&mut self, channel: &str, message: String, user_id: &str) -> () {
+        let user = {
+            let users = self.users.lock().await;
+            users.get(user_id).cloned()
+        };
         match user {
             None => {}
             Some(user) => {
-                let list = self.messages.get_mut(channel);
+                let mut messages = self.messages.lock().await;
+                let list = messages.get_mut(channel);
                 match list {
                     Some(list) => list.push(format!("{}: {}", user.name, message)),
                     None => {
-                        self.messages.insert(
+                        messages.insert(
                             channel.to_string(),
                             vec![format!("{}: {}", user.name, message)],
                         );
@@ -66,13 +71,16 @@ impl MockDB {
 
 #[derive(Clone)]
 struct NitramResource {
-    db: Arc<Mutex<MockDB>>,
+    // db: Arc<Mutex<MockDB>>,
+    db: MockDB,
+    // TODO: remove from NitramResource (possible?) it's only needed for auth
     nitram_inner: Arc<Mutex<NitramInner>>,
 }
 impl FromResources for NitramResource {}
 impl NitramResource {
     fn new(nitram_inner: Arc<Mutex<NitramInner>>) -> Self {
-        let db = Arc::new(Mutex::new(MockDB::default()));
+        // let db = Arc::new(Mutex::new(MockDB::default()));
+        let db = MockDB::default();
         Self { db, nitram_inner }
     }
 }
@@ -88,11 +96,14 @@ async fn get_token_handler(
     resource: NitramResource,
     params: GetTokenParams,
 ) -> MethodResult<String> {
-    let mut db = resource.db.lock().await;
-    let user_id = db.insert_user(User::new(params.user_name));
+    let mut db = resource.db;
+    let user_id = db.insert_user(User::new(params.user_name)).await;
     let db_session =
         DBSession::new(&user_id, AuthStrategy::EmailLink).map_err(|_| MethodError::Server)?;
-    let qty = db.users.len();
+    let qty = {
+        let users = db.users.lock().await;
+        users.len()
+    };
     tracing::debug!("Users: {:?}", qty);
     Ok(db_session.token)
 }
@@ -114,9 +125,11 @@ async fn send_message_handler(
     let now = Utc::now();
     store.insert("last", json!(now)).await;
     store.insert("count", json!(count + 1)).await;
-    let mut db = resource.db.lock().await;
-    db.insert_message(&params.channel, params.message, &session.user_id);
-    Ok(db.messages.get(&params.channel).unwrap().clone())
+    let mut db = resource.db;
+    db.insert_message(&params.channel, params.message, &session.user_id)
+        .await;
+    let messages = db.messages.lock().await;
+    Ok(messages.get(&params.channel).unwrap().clone())
 }
 nitram_handler!(
     SendMessageAPI,    // Method name
@@ -132,11 +145,15 @@ async fn authenticate_handler(
     anonym_session: WSSessionAnonymResource,
     params: AuthenticateParams,
 ) -> MethodResult<String> {
-    let db = resource.db.lock().await;
+    let db = resource.db;
     let token = params.token.clone();
     let parsed_token: ParsedToken = parse_token(&token).map_err(|_| MethodError::Server)?;
     tracing::debug!("Parsed token: {:?}", parsed_token);
-    match db.users.get(&parsed_token.user_id) {
+    let user = {
+        let users = db.users.lock().await;
+        users.get(&parsed_token.user_id).cloned()
+    };
+    match user {
         Some(user) => {
             let user_id = user.id.clone();
 
@@ -175,13 +192,9 @@ async fn messages_handler(
     let last = store.get::<DateTime<Utc>>("last").await;
     let count = store.get::<i32>("count").await;
 
-    let db = resource.db.lock().await;
+    let messages = resource.db.messages.lock().await;
     Ok(MessagesOutput {
-        messages: db
-            .messages
-            .get(&params.channel)
-            .cloned()
-            .unwrap_or_default(),
+        messages: messages.get(&params.channel).cloned().unwrap_or_default(),
         last,
         count: count.unwrap_or_default(),
     })
@@ -195,8 +208,8 @@ nitram_handler!(
 );
 
 async fn get_user_handler(resource: NitramResource, params: IdParams) -> MethodResult<User> {
-    let db = resource.db.lock().await;
-    match db.users.get(&params.id) {
+    let users = resource.db.users.lock().await;
+    match users.get(&params.id) {
         Some(user) => Ok(user.clone()),
         None => Err(MethodError::NotFound),
     }
@@ -235,6 +248,7 @@ async fn main() -> std::io::Result<()> {
         .add_private_handler("GetUser", get_user_handler)
         .add_server_message_handler("Messages", messages_handler);
     let nitram = cb.build(inner_arc);
+    tracing::info!("Starting server");
     HttpServer::new(move || {
         App::new()
             .wrap(Logger::default())
