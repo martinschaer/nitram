@@ -66,8 +66,8 @@ export class Server {
   // -- Constructor
   constructor() {
     this.ws = new WebSocket(`${import.meta.env.VITE_WS_SERVER}/ws`);
-    this.check_connection();
     this.init();
+    this.check_connection();
   }
 
   // ---------------------------------------------------------------------------
@@ -161,7 +161,8 @@ export class Server {
       // retry to reconnect in 5 seconds
       setTimeout(() => {
         this.ws = new WebSocket(`${import.meta.env.VITE_WS_SERVER}/ws`);
-        this.init();
+        // TODO: do we need to call init again?
+        // this.init();
         if (this._stop) return;
         setTimeout(() => this.check_connection(), 5000);
       }, 5000);
