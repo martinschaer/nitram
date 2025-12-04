@@ -1,6 +1,6 @@
 {
   "name": "nitram-monorepo",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "type": "module",
   "workspaces": [
     "packages/nitram",
