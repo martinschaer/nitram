@@ -38,6 +38,7 @@ pub enum MethodError {
     NotFound,
     NotAuthorized,
     NotAuthenticated,
+    NoResponse,
 }
 
 impl Serialize for MethodError {
@@ -57,6 +58,9 @@ impl Serialize for MethodError {
             }
             MethodError::NotAuthenticated => {
                 serializer.serialize_str(&Nice::from(NiceMessage::NotAuthenticated).to_string())
+            }
+            MethodError::NoResponse => {
+                serializer.serialize_str(&Nice::from(NiceMessage::NoResponse).to_string())
             }
         }
     }
