@@ -11,6 +11,9 @@ pub struct NitramBuilder {
     registered_public_handlers: Vec<String>,
     registered_private_handlers: Vec<String>,
     registered_server_messages_handlers: Vec<String>,
+    ping_interval_in_seconds: Option<u64>,
+    timeout_in_seconds: Option<u64>,
+    max_frame_size: Option<usize>,
 }
 
 impl Default for NitramBuilder {
@@ -22,6 +25,9 @@ impl Default for NitramBuilder {
             registered_public_handlers: vec![],
             registered_private_handlers: vec![],
             registered_server_messages_handlers: vec![],
+            ping_interval_in_seconds: None,
+            timeout_in_seconds: None,
+            max_frame_size: None,
         }
     }
 }
@@ -100,13 +106,16 @@ impl NitramBuilder {
             self.registered_server_messages_handlers
         );
         Nitram::new(
+            inner,
             self.rpc_router_builder_public.build(),
             self.rpc_router_builder_private.build(),
             self.rpc_router_builder_server_messages.build(),
             self.registered_public_handlers,
             self.registered_private_handlers,
             self.registered_server_messages_handlers,
-            inner,
+            self.ping_interval_in_seconds,
+            self.timeout_in_seconds,
+            self.max_frame_size,
         )
     }
 }

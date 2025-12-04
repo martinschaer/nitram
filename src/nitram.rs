@@ -45,17 +45,23 @@ pub struct Nitram {
     registered_public_handlers: Vec<String>,
     registered_private_handlers: Vec<String>,
     registered_server_message_handlers: Vec<String>,
+    pub ping_interval_in_seconds: u64,
+    pub timeout_in_seconds: u64,
+    pub max_frame_size: usize,
 }
 
 impl Nitram {
     pub fn new(
+        inner: Arc<Mutex<NitramInner>>,
         rpc_router_public: Router,
         rpc_router_private: Router,
         rpc_router_server_messages: Router,
         registered_public_handlers: Vec<String>,
         registered_private_handlers: Vec<String>,
         registered_server_message_handlers: Vec<String>,
-        inner: Arc<Mutex<NitramInner>>,
+        ping_interval_in_seconds: Option<u64>,
+        timeout_in_seconds: Option<u64>,
+        max_frame_size: Option<usize>,
     ) -> Self {
         // TODO: spawn a tokio task to read from live query streams
         Nitram {
@@ -66,6 +72,11 @@ impl Nitram {
             registered_public_handlers,
             registered_private_handlers,
             registered_server_message_handlers,
+            ping_interval_in_seconds: ping_interval_in_seconds.unwrap_or(30),
+            timeout_in_seconds: timeout_in_seconds.unwrap_or(90),
+            // TODO: is there a better frame size?
+            // increase the maximum allowed frame size to 128KiB and aggregate continuation frames
+            max_frame_size: max_frame_size.unwrap_or(128 * 1024),
         }
     }
 
