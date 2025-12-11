@@ -114,6 +114,7 @@ async fn send_message_handler(
     let now = Utc::now();
     store.insert("last", json!(now)).await;
     store.insert("count", json!(count + 1)).await;
+    store.insert("notify", json!(true)).await;
     let mut db = resource.db.lock().await;
     db.insert_message(&params.channel, params.message, &session.user_id);
     Ok(db.messages.get(&params.channel).unwrap().clone())
@@ -169,12 +170,17 @@ struct MessagesOutput {
 
 async fn messages_handler(
     resource: NitramResource,
-    store: Store,
+    mut store: Store,
     params: MessagesParams,
 ) -> MethodResult<MessagesOutput> {
     let last = store.get::<DateTime<Utc>>("last").await;
     let count = store.get::<i32>("count").await;
+    let notify = store.get::<bool>("notify").await.unwrap_or(true);
+    if !notify {
+        return Err(MethodError::NoResponse);
+    }
 
+    store.insert("notify", json!(false)).await;
     let db = resource.db.lock().await;
     Ok(MessagesOutput {
         messages: db

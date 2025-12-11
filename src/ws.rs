@@ -15,9 +15,9 @@ pub async fn handler(
 ) -> std::result::Result<HttpResponse, actix_web::Error> {
     let (response, mut session, stream) = actix_ws::handle(&req, body)?;
 
-    // TODO: is there a better frame size?
-    // increase the maximum allowed frame size to 128KiB and aggregate continuation frames
-    let mut stream = stream.max_frame_size(128 * 1024).aggregate_continuations();
+    let mut stream = stream
+        .max_frame_size(nitram.max_frame_size)
+        .aggregate_continuations();
 
     let session_id = nitram.insert().await;
 
@@ -26,7 +26,9 @@ pub async fn handler(
     let mut session2 = session.clone();
     let nitram_for_loop = nitram.clone();
     actix_web::rt::spawn(async move {
-        let mut interval = actix_web::rt::time::interval(Duration::from_secs(5));
+        let ping_interval = Duration::from_secs(nitram_for_loop.ping_interval_in_seconds);
+        let timeout = Duration::from_secs(nitram_for_loop.timeout_in_seconds);
+        let mut interval = actix_web::rt::time::interval(ping_interval);
 
         loop {
             interval.tick().await;
@@ -38,7 +40,7 @@ pub async fn handler(
                 break;
             }
 
-            if Instant::now().duration_since(*alive2.lock().await) > Duration::from_secs(10) {
+            if Instant::now().duration_since(*alive2.lock().await) > timeout {
                 let _ = session2.close(None).await;
                 tracing::debug!(
                     sess = session_id.to_string(),

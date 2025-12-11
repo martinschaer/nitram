@@ -1,6 +1,6 @@
 [package]
 name = "nitram"
-version = "0.3.2"
+version = "0.3.4"
 authors = ["Martin Schaer <martin@schaerweb.com>"]
 edition = "2021"
 description = "Opinionated RPC server for Rust and Typescript"
