@@ -46,6 +46,7 @@ pub struct Nitram {
     registered_private_handlers: Vec<String>,
     registered_server_message_handlers: Vec<String>,
     pub ping_interval_in_seconds: u64,
+    pub server_messages_interval_in_millis: u64,
     pub timeout_in_seconds: u64,
     pub max_frame_size: usize,
 }
@@ -60,6 +61,7 @@ impl Nitram {
         registered_private_handlers: Vec<String>,
         registered_server_message_handlers: Vec<String>,
         ping_interval_in_seconds: Option<u64>,
+        server_messages_interval_in_millis: Option<u64>,
         timeout_in_seconds: Option<u64>,
         max_frame_size: Option<usize>,
     ) -> Self {
@@ -73,6 +75,7 @@ impl Nitram {
             registered_private_handlers,
             registered_server_message_handlers,
             ping_interval_in_seconds: ping_interval_in_seconds.unwrap_or(30),
+            server_messages_interval_in_millis: server_messages_interval_in_millis.unwrap_or(1000),
             timeout_in_seconds: timeout_in_seconds.unwrap_or(90),
             // TODO: is there a better frame size?
             // increase the maximum allowed frame size to 128KiB and aggregate continuation frames
@@ -312,7 +315,7 @@ impl Nitram {
                     match topics_registered.contains_key(topic) {
                         true => {
                             let rpc_request = Request {
-                                id: "fake".into(),
+                                id: "server-message".into(),
                                 method: topic.clone(),
                                 params: topics_registered.get(topic).cloned(),
                             };
@@ -324,13 +327,11 @@ impl Nitram {
                                 .append(store.clone())
                                 .build();
 
-                            let result: Result<Value> = self
+                            let result = self
                                 .rpc_router_server_messages
                                 .call_with_resources(rpc_request, rpc_resources)
                                 .await
-                                .map(|r| r.value)
-                                .map_err(|e| e.into());
-
+                                .map(|r| r.value);
                             match result {
                                 Ok(result) => {
                                     server_messages.push(NitramServerMessage {
@@ -338,9 +339,28 @@ impl Nitram {
                                         payload: result,
                                     });
                                 }
-                                Err(e) => {
-                                    tracing::error!("Error calling server message handler: {}", e);
-                                }
+                                Err(e) => match &e.error {
+                                    rpc_router::Error::Handler(e) => {
+                                        let method_error = e.get::<MethodError>();
+                                        match method_error {
+                                            Some(MethodError::NoResponse) => {
+                                                // This is not a real error, so we don't log it
+                                            }
+                                            _ => {
+                                                tracing::error!(
+                                                    "Error calling server message handler: {}",
+                                                    e
+                                                );
+                                            }
+                                        }
+                                    }
+                                    _ => {
+                                        tracing::error!(
+                                            "Error calling server message handler: {}",
+                                            e
+                                        );
+                                    }
+                                },
                             }
                         }
                         false => {

@@ -12,6 +12,7 @@ pub struct NitramBuilder {
     registered_private_handlers: Vec<String>,
     registered_server_messages_handlers: Vec<String>,
     ping_interval_in_seconds: Option<u64>,
+    server_messages_interval_in_millis: Option<u64>,
     timeout_in_seconds: Option<u64>,
     max_frame_size: Option<usize>,
 }
@@ -26,6 +27,7 @@ impl Default for NitramBuilder {
             registered_private_handlers: vec![],
             registered_server_messages_handlers: vec![],
             ping_interval_in_seconds: None,
+            server_messages_interval_in_millis: None,
             timeout_in_seconds: None,
             max_frame_size: None,
         }
@@ -33,6 +35,11 @@ impl Default for NitramBuilder {
 }
 
 impl NitramBuilder {
+    pub fn set_server_messages_interval(mut self, interval_in_millis: u64) -> Self {
+        self.server_messages_interval_in_millis = Some(interval_in_millis);
+        self
+    }
+
     pub fn add_resource(
         mut self,
         resource: impl FromResources + Clone + Send + Sync + 'static,
@@ -114,6 +121,7 @@ impl NitramBuilder {
             self.registered_private_handlers,
             self.registered_server_messages_handlers,
             self.ping_interval_in_seconds,
+            self.server_messages_interval_in_millis,
             self.timeout_in_seconds,
             self.max_frame_size,
         )

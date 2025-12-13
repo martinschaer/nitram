@@ -234,6 +234,7 @@ async fn main() -> std::io::Result<()> {
     let inner_arc = Arc::new(Mutex::new(inner));
     let resource = NitramResource::new(inner_arc.clone());
     let cb = NitramBuilder::default()
+        .set_server_messages_interval(1000)
         .add_resource(resource)
         .add_public_handler("Authenticate", authenticate_handler)
         .add_public_handler("GetToken", get_token_handler)
