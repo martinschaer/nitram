@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.5] - 2025-12-14
+
+### Added
+
+- `server_messages_interval` — configurable interval for sending server messages to clients (default = 1000ms)
+
 ## [0.3.4] - 2025-12-04
 
 ### Added

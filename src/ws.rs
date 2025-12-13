@@ -48,23 +48,35 @@ pub async fn handler(
                 );
                 break;
             }
+        }
 
-            // -- Session server messages
-            let server_messages = nitram_for_loop
+        tracing::debug!(sess = session_id.to_string(), "Loop ended");
+        nitram_for_loop.remove(&session_id).await;
+    });
+
+    // -- Server messages loop
+    let nitram_for_server_messages_loop = nitram.clone();
+    let mut session3 = session.clone();
+    actix_web::rt::spawn(async move {
+        let loop_interval = Duration::from_millis(
+            nitram_for_server_messages_loop.server_messages_interval_in_millis,
+        );
+        let mut interval = actix_web::rt::time::interval(loop_interval);
+
+        loop {
+            interval.tick().await;
+            let server_messages = nitram_for_server_messages_loop
                 .get_server_messages_for_session(&session_id)
                 .await;
             if !server_messages.is_empty() {
                 match serde_json::to_string(&server_messages) {
                     Ok(json) => {
-                        let _ = session2.text(json).await;
+                        let _ = session3.text(json).await;
                     }
                     _ => {}
                 }
             }
         }
-
-        tracing::debug!(sess = session_id.to_string(), "Loop ended");
-        nitram_for_loop.remove(&session_id).await;
     });
 
     actix_web::rt::spawn(async move {
