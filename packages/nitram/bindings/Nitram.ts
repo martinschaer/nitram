@@ -2,4 +2,4 @@
 
 export type EmptyParams = null;
 
-export type IdParams = { id: string, };
+export type IdParams = { id: string };
