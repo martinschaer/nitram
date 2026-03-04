@@ -62,7 +62,8 @@ export class Server {
   private eventHandlers: Map<string, EventHandler[]> = new Map();
   private serverMessageHandlers: Map<string, ServerMessageHandler[]> =
     new Map();
-  private queue: QueueItem[] = [];// -- Constructor
+  private queue: QueueItem[] = [];
+
   /**
    * Nitram server constructor
    *

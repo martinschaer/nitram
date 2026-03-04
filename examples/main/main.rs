@@ -16,9 +16,8 @@ use uuid::Uuid;
 use nitram::{
     auth::{WSSessionAnonymResource, WSSessionAuthedResource},
     error::{MethodError, MethodResult},
-    models::{Store, UserSession},
+    models::Store,
     nitram_handler, ws, AuthenticateParams, FromResources, IdParams, IntoParams, NitramBuilder,
-    NitramInner,
 };
 
 const JWT_SECRET: &[u8] = b"nitram-example-secret-change-in-production";
@@ -78,13 +77,12 @@ impl MockDB {
 #[derive(Clone)]
 struct NitramResource {
     db: Arc<Mutex<MockDB>>,
-    nitram_inner: Arc<Mutex<NitramInner>>,
 }
 impl FromResources for NitramResource {}
 impl NitramResource {
-    fn new(nitram_inner: Arc<Mutex<NitramInner>>) -> Self {
+    fn new() -> Self {
         let db = Arc::new(Mutex::new(MockDB::default()));
-        Self { db, nitram_inner }
+        Self { db }
     }
 }
 
@@ -157,6 +155,8 @@ async fn authenticate_handler(
     let db = resource.db.lock().await;
     let token = params.token.clone();
 
+    tracing::debug!("Authenticating {}", token);
+
     let token_data = decode::<JwtClaims>(
         &token,
         &DecodingKey::from_secret(JWT_SECRET),
@@ -177,13 +177,7 @@ async fn authenticate_handler(
             let user_id = user.id.clone();
 
             // authenticate nitram session
-            let mut nitram = resource.nitram_inner.lock().await;
-            let db_session = UserSession {
-                id: session_id,
-                user_id: user_id.clone(),
-                expires_at,
-            };
-            nitram.auth_ws_session(anonym_session.ws_session_id, db_session);
+            anonym_session.auth(&session_id, &user_id, expires_at).await;
 
             Ok(user_id)
         }
@@ -268,9 +262,7 @@ async fn main() -> std::io::Result<()> {
     //     .install_default()
     //     .map_err(|_| std::io::ErrorKind::Other)?;
 
-    let inner = NitramInner::default();
-    let inner_arc = Arc::new(Mutex::new(inner));
-    let resource = NitramResource::new(inner_arc.clone());
+    let resource = NitramResource::new();
     let cb = NitramBuilder::default()
         .set_server_messages_interval(1000)
         .add_resource(resource)
@@ -279,7 +271,7 @@ async fn main() -> std::io::Result<()> {
         .add_private_handler("SendMessage", send_message_handler)
         .add_private_handler("GetUser", get_user_handler)
         .add_server_message_handler("Messages", messages_handler);
-    let nitram = cb.build(inner_arc);
+    let nitram = cb.build();
     HttpServer::new(move || {
         App::new()
             .wrap(Logger::default())

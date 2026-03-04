@@ -52,7 +52,7 @@ The library wraps `rpc-router` and `actix-ws` to provide a structured WebSocket 
 
 **Core flow:**
 1. `NitramBuilder` registers handlers as public, private, or server-message handlers, then `build()` produces a `Nitram` instance.
-2. `Nitram` (Arc-cloned into Actix app data) holds `NitramInner` (session map) and three `rpc-router` routers.
+2. `Nitram` (Arc-cloned into Actix app data) holds `NitramState` (session map) and three `rpc-router` routers.
 3. `ws::handler` is the Actix WebSocket endpoint. It spawns three tasks: ping/timeout loop, server-messages push loop, and message receive loop.
 4. On each incoming text message, `Nitram::send()` deserializes to `NitramRequest`, routes to the appropriate handler, and returns a serialized `NitramResponse`.
 
@@ -61,13 +61,13 @@ The library wraps `rpc-router` and `actix-ws` to provide a structured WebSocket 
 - **Private**: requires authentication; receives `WSSessionAuthedResource` and a per-session `Store`.
 - **Server-message**: polled on an interval per authenticated session for subscribed topics; return `MethodError::NoResponse` to suppress sending.
 
-**Auth model:** Sessions start as `NitramSession::Anonymous`. Calling `NitramInner::auth_ws_session()` inside an `authenticate_handler` transitions them to `NitramSession::Authenticated`, which carries a `DBSession`, a topic subscription map, and a `Store` (per-session key-value store).
+**Auth model:** Sessions start as `NitramSession::Anonymous`. Calling `NitramState::auth_ws_session()` inside an `authenticate_handler` transitions them to `NitramSession::Authenticated`, which carries a `DBSession`, a topic subscription map, and a `Store` (per-session key-value store).
 
 **TypeScript binding generation:** `ts-rs` exports types to `bindings/`. The `nitram_handler!` macro defines both the params struct (exported to `API/Params.ts`) and the API shape struct (exported to `API/index.ts`). Run `just bindings` to regenerate after changes.
 
 **Key files:**
 - `src/builder.rs` — `NitramBuilder`
-- `src/nitram.rs` — `Nitram` and `NitramInner`
+- `src/nitram.rs` — `Nitram` and `NitramState`
 - `src/ws.rs` — Actix WebSocket handler
 - `src/auth.rs` — Session types, token generation/parsing, `AuthenticateParams`
 - `src/models.rs` — `DBSession`, `Store`, `AuthStrategy`
