@@ -44,7 +44,7 @@ export const BackendProvider: ParentComponent<{
   publicChildren: JSX.Element;
 }> = (props) => {
   // -- State
-  const server = createMemo(() => new Server());
+  const server = createMemo(() => new Server("ws://0.0.0.0:8000/ws"));
   const [isAuthenticated, isAuthenticatedSet] = createSignal<boolean | null>(
     null,
   );
