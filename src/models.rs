@@ -13,6 +13,7 @@ use crate::error::Result;
 #[derive(Clone, Serialize, Deserialize)]
 pub enum AuthStrategy {
     EmailLink,
+    Jwt,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

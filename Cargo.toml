@@ -45,5 +45,8 @@ actix-ws = "0.3.0"
 # -- For example
 # Static SPA files
 actix-files = "0.6.6"
+# JWT
+jsonwebtoken = { version = "10.3.0", features = ["aws_lc_rs"] }
+# rustls = "0.23.37"
 # Logging
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }

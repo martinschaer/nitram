@@ -81,6 +81,11 @@ pub fn generate_token(
             db_session_id: id.clone(),
             user_id: user_id.into(),
         }),
+        AuthStrategy::Jwt => {
+            return Err(Error::TokenError(
+                "JWT tokens must be issued externally".into(),
+            ))
+        }
     }
     .map_err(|e| Error::TokenError(e.to_string()))?;
     let encoded_token = BASE64_STANDARD.encode(token);
