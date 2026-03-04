@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::auth::{NitramSession, WSSessionAnonymResource, WSSessionAuthedResource};
 use crate::error::{Error, MethodError, Result};
 use crate::messages::{NitramRequest, NitramResponse, NitramServerMessage};
-use crate::models::{DBSession, UserPayload};
+use crate::models::{UserPayload, UserSession};
 use crate::nice::{Nice, NiceMessage};
 
 pub struct NitramInner {
@@ -29,9 +29,9 @@ impl NitramInner {
         self.ws_sessions.insert(id, NitramSession::Anonymous);
         id
     }
-    pub fn auth_ws_session(&mut self, ws_session_id: Uuid, db_session: DBSession) -> () {
+    pub fn auth_ws_session(&mut self, ws_session_id: Uuid, user_session: UserSession) -> () {
         self.ws_sessions
-            .insert(ws_session_id, NitramSession::new(db_session));
+            .insert(ws_session_id, NitramSession::new(user_session));
         tracing::debug!("auth_ws_session sessions: {:?}", self.ws_sessions);
     }
 }
@@ -109,11 +109,11 @@ impl Nitram {
         tracing::debug!("WS sessions: {:?}", inner.ws_sessions);
         match inner.ws_sessions.get(ws_session_id) {
             Some(NitramSession::Authenticated {
-                db_session,
+                user_session,
                 topics_registered: _,
                 store,
             }) => Ok(UserPayload {
-                db_session: db_session.clone(),
+                user_session: user_session.clone(),
                 store: store.clone(),
             }),
             Some(NitramSession::Anonymous) => Err(Error::NotAuthorized),
@@ -150,7 +150,7 @@ impl Nitram {
                     tracing::debug!("WS sessions: {:?}", inner.ws_sessions);
                     match inner.ws_sessions.get_mut(ws_session_id) {
                         Some(NitramSession::Authenticated {
-                            db_session: _,
+                            user_session: _,
                             topics_registered,
                             store: _,
                         }) => {
@@ -195,7 +195,7 @@ impl Nitram {
         } else if is_private {
             let user_payload = self.is_auth(ws_session_id).await?;
             let session_resource = WSSessionAuthedResource {
-                user_id: user_payload.db_session.user_id,
+                user_id: user_payload.user_session.user_id,
             };
             let rpc_resources = Resources::builder()
                 .append(session_resource)
@@ -305,7 +305,7 @@ impl Nitram {
         let session = inner.ws_sessions.get(ws_session_id);
         if let Some(session) = session {
             if let NitramSession::Authenticated {
-                db_session,
+                user_session,
                 topics_registered,
                 store,
             } = session
@@ -320,7 +320,7 @@ impl Nitram {
                                 params: topics_registered.get(topic).cloned(),
                             };
                             let session_resource = WSSessionAuthedResource {
-                                user_id: db_session.user_id.clone(),
+                                user_id: user_session.user_id.clone(),
                             };
                             let rpc_resources = Resources::builder()
                                 .append(session_resource)

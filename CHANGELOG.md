@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- example using JWT authentication
+
+### Changed
+
+- websocket server URL is now passed to the constructor instead of being read from environment variables. VITE_WS_SERVER is no longer required.
+
 ## [0.3.5] - 2025-12-14
 
 ### Added

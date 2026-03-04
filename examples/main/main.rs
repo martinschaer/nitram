@@ -16,7 +16,7 @@ use uuid::Uuid;
 use nitram::{
     auth::{WSSessionAnonymResource, WSSessionAuthedResource},
     error::{MethodError, MethodResult},
-    models::{AuthStrategy, DBSession, Store},
+    models::{Store, UserSession},
     nitram_handler, ws, AuthenticateParams, FromResources, IdParams, IntoParams, NitramBuilder,
     NitramInner,
 };
@@ -178,11 +178,9 @@ async fn authenticate_handler(
 
             // authenticate nitram session
             let mut nitram = resource.nitram_inner.lock().await;
-            let db_session = DBSession {
+            let db_session = UserSession {
                 id: session_id,
                 user_id: user_id.clone(),
-                strategy: AuthStrategy::Jwt,
-                token,
                 expires_at,
             };
             nitram.auth_ws_session(anonym_session.ws_session_id, db_session);

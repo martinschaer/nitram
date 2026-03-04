@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+    use chrono::Utc;
     use serde::{Deserialize, Serialize};
     use serde_json::json;
     use std::sync::Arc;
@@ -10,7 +11,7 @@ mod tests {
     use nitram::{
         auth::{WSSessionAnonymResource, WSSessionAuthedResource},
         error::MethodError,
-        models::{AuthStrategy, DBSession},
+        models::UserSession,
         FromResources, IntoParams, Nitram, NitramBuilder,
     };
 
@@ -66,7 +67,11 @@ mod tests {
         let mut nitram_inner = inner_arc_clone.lock().await;
         let anonym = nitram_inner.add_anonym_ws_session();
         let authed = nitram_inner.add_anonym_ws_session();
-        let db_session = DBSession::new("fake_user", AuthStrategy::EmailLink).unwrap();
+        let db_session = UserSession {
+            id: Uuid::new_v4().to_string(),
+            user_id: "fake_user".to_string(),
+            expires_at: Utc::now(),
+        };
         nitram_inner.auth_ws_session(authed, db_session);
         Context {
             nitram,
