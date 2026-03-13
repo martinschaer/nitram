@@ -1,45 +1,53 @@
-use base64::prelude::*;
 use chrono::{DateTime, Utc};
 use rpc_router::{IntoParams, RpcResource};
 use serde::Deserialize;
 use serde_json::Value;
-use std::time::Duration;
+use std::sync::Arc;
 use std::{collections::HashMap, fmt};
+use tokio::sync::Mutex;
 use ts_rs::TS;
 use uuid::Uuid;
 
-use crate::models::Store;
-use crate::nitram_handler;
-use crate::{
-    error::{Error, Result},
-    models::{AuthStrategy, DBSession, DBSessionId, ParsedToken},
-};
+use crate::models::{Store, UserSession};
+use crate::{nitram_handler, NitramState};
 
 #[derive(Clone, RpcResource)]
 pub struct WSSessionAnonymResource {
     pub ws_session_id: Uuid,
+    pub nitram_state: Arc<Mutex<NitramState>>,
+}
+
+impl WSSessionAnonymResource {
+    pub async fn auth(&self, user_id: &str, expires_at: DateTime<Utc>) -> () {
+        let user_session = UserSession {
+            id: self.ws_session_id.clone(),
+            user_id: user_id.to_string(),
+            expires_at,
+        };
+        let mut state = self.nitram_state.lock().await;
+        state.auth_ws_session(self.ws_session_id, user_session);
+    }
 }
 
 #[derive(Clone, RpcResource)]
 pub struct WSSessionAuthedResource {
     pub user_id: String,
-    // pub ws_session_id: Uuid,
 }
 
 #[derive(Clone)]
 pub enum NitramSession {
     Anonymous,
     Authenticated {
-        db_session: DBSession,
+        user_session: UserSession,
         topics_registered: HashMap<String, Value>,
         store: Store,
     },
 }
 
 impl NitramSession {
-    pub fn new(db_session: DBSession) -> Self {
+    pub fn new_auth(user_session: UserSession) -> Self {
         NitramSession::Authenticated {
-            db_session,
+            user_session,
             topics_registered: HashMap::new(),
             store: Store::new(),
         }
@@ -51,46 +59,19 @@ impl fmt::Debug for NitramSession {
         match self {
             NitramSession::Anonymous => write!(f, "Anonymous"),
             NitramSession::Authenticated {
-                db_session,
+                user_session,
                 topics_registered,
                 store: _,
             } => {
                 write!(
                     f,
                     "Authenticated({},topics={:?})",
-                    db_session.id,
+                    user_session.id,
                     topics_registered.keys().collect::<Vec<&String>>()
                 )
             }
         }
     }
-}
-
-pub fn generate_token(
-    user_id: impl Into<String>,
-    strategy: &AuthStrategy,
-) -> Result<(DBSessionId, DateTime<Utc>, String)> {
-    // TODO(6cd5): use new method when implemented
-    // None => DBSessionId::new(),
-    let id = Uuid::new_v4().to_string();
-    let now = Utc::now();
-    let expires_at = now + Duration::new(7 * 24 * 60 * 60, 0);
-    let token = match strategy {
-        AuthStrategy::EmailLink => serde_json::to_string(&ParsedToken {
-            expires_at: expires_at.into(),
-            db_session_id: id.clone(),
-            user_id: user_id.into(),
-        }),
-    }
-    .map_err(|e| Error::TokenError(e.to_string()))?;
-    let encoded_token = BASE64_STANDARD.encode(token);
-    Ok((id, expires_at.into(), encoded_token))
-}
-
-pub fn parse_token(token: impl Into<String>) -> Result<ParsedToken> {
-    let token = BASE64_STANDARD.decode(token.into().as_bytes());
-    let token = token.map_err(|e| Error::TokenError(e.to_string()))?;
-    serde_json::from_slice(&token).map_err(|e| Error::TokenError(e.to_string()))
 }
 
 nitram_handler!(

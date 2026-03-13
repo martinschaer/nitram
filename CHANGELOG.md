@@ -1,0 +1,41 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [0.4.0] - 2026-03-13
+
+### Added
+
+- example using JWT authentication
+
+### Changed
+
+- NitramInner is not required as a resource
+- `WSSessionAnonymResource::auth()` no longer takes a `session_id` parameter — the WebSocket session ID is now used internally as the session ID
+- `UserSession::id` type changed from `String` to `Uuid`
+
+### Changed
+
+- websocket server URL is now passed to the constructor instead of being read from environment variables. VITE_WS_SERVER is no longer required.
+
+## [0.3.5] - 2025-12-14
+
+### Added
+
+- `server_messages_interval` — configurable interval for sending server messages to clients (default = 1000ms)
+
+## [0.3.4] - 2025-12-04
+
+### Added
+
+- Add configurable WebSocket options:
+  - `ping_interval_in_seconds` — configurable ping interval for WebSocket keepalive (default = 30s)
+  - `timeout_in_seconds` — configurable connection timeout when no pong/keepalive is received (default = 90s)
+  - `max_frame_size` — configurable maximum WebSocket frame size (default = 128 KiB)
+
+- Add NoResponse nice message to use when a server message handler does not need to send a message to the client.

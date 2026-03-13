@@ -8,43 +8,47 @@ use uuid::Uuid;
 use crate::auth::{NitramSession, WSSessionAnonymResource, WSSessionAuthedResource};
 use crate::error::{Error, MethodError, Result};
 use crate::messages::{NitramRequest, NitramResponse, NitramServerMessage};
-use crate::models::{DBSession, UserPayload};
+use crate::models::{UserPayload, UserSession};
 use crate::nice::{Nice, NiceMessage};
 
-pub struct NitramInner {
+pub struct NitramState {
     ws_sessions: BTreeMap<Uuid, NitramSession>,
 }
 
-impl Default for NitramInner {
-    fn default() -> Self {
-        NitramInner {
+impl NitramState {
+    fn new() -> Self {
+        NitramState {
             ws_sessions: BTreeMap::new(),
         }
     }
 }
 
-impl NitramInner {
+impl NitramState {
     pub fn add_anonym_ws_session(&mut self) -> Uuid {
         let id = Uuid::new_v4();
         self.ws_sessions.insert(id, NitramSession::Anonymous);
         id
     }
-    pub fn auth_ws_session(&mut self, ws_session_id: Uuid, db_session: DBSession) -> () {
+    pub fn auth_ws_session(&mut self, ws_session_id: Uuid, user_session: UserSession) -> () {
         self.ws_sessions
-            .insert(ws_session_id, NitramSession::new(db_session));
+            .insert(ws_session_id, NitramSession::new_auth(user_session));
         tracing::debug!("auth_ws_session sessions: {:?}", self.ws_sessions);
     }
 }
 
 #[derive(Clone)]
 pub struct Nitram {
-    pub inner: Arc<Mutex<NitramInner>>,
+    state: Arc<Mutex<NitramState>>,
     rpc_router_public: Router,
     rpc_router_private: Router,
     rpc_router_server_messages: Router,
     registered_public_handlers: Vec<String>,
     registered_private_handlers: Vec<String>,
     registered_server_message_handlers: Vec<String>,
+    pub ping_interval_in_seconds: u64,
+    pub server_messages_interval_in_millis: u64,
+    pub timeout_in_seconds: u64,
+    pub max_frame_size: usize,
 }
 
 impl Nitram {
@@ -55,33 +59,42 @@ impl Nitram {
         registered_public_handlers: Vec<String>,
         registered_private_handlers: Vec<String>,
         registered_server_message_handlers: Vec<String>,
-        inner: Arc<Mutex<NitramInner>>,
+        ping_interval_in_seconds: Option<u64>,
+        server_messages_interval_in_millis: Option<u64>,
+        timeout_in_seconds: Option<u64>,
+        max_frame_size: Option<usize>,
     ) -> Self {
         // TODO: spawn a tokio task to read from live query streams
         Nitram {
-            inner,
+            state: Arc::new(Mutex::new(NitramState::new())),
             rpc_router_public,
             rpc_router_private,
             rpc_router_server_messages,
             registered_public_handlers,
             registered_private_handlers,
             registered_server_message_handlers,
+            ping_interval_in_seconds: ping_interval_in_seconds.unwrap_or(30),
+            server_messages_interval_in_millis: server_messages_interval_in_millis.unwrap_or(1000),
+            timeout_in_seconds: timeout_in_seconds.unwrap_or(90),
+            // TODO: is there a better frame size?
+            // increase the maximum allowed frame size to 128KiB and aggregate continuation frames
+            max_frame_size: max_frame_size.unwrap_or(128 * 1024),
         }
     }
 
     pub async fn insert(&self) -> Uuid {
         let uuid = Uuid::new_v4();
-        let mut inner = self.inner.lock().await;
-        inner.ws_sessions.insert(uuid, NitramSession::Anonymous);
-        let count = inner.ws_sessions.len();
+        let mut state = self.state.lock().await;
+        state.ws_sessions.insert(uuid, NitramSession::Anonymous);
+        let count = state.ws_sessions.len();
         tracing::info!(sess = uuid.to_string(), count = count, "Inserted session");
         uuid
     }
 
     pub async fn remove(&self, ws_session_id: &Uuid) {
-        let mut inner = self.inner.lock().await;
-        let removed = inner.ws_sessions.remove(ws_session_id);
-        let count = inner.ws_sessions.len();
+        let mut state = self.state.lock().await;
+        let removed = state.ws_sessions.remove(ws_session_id);
+        let count = state.ws_sessions.len();
         tracing::info!(
             sess = ws_session_id.to_string(),
             kind = format!("{:?}", removed),
@@ -90,16 +103,24 @@ impl Nitram {
         );
     }
 
+    /// This is meant to be used for testing. To authenticate a ws session you
+    /// should use NitramInstance from within a handler.
+    pub async fn _auth_ws_session(&self, ws_session_id: Uuid, user_session: UserSession) -> () {
+        let mut state = self.state.lock().await;
+        state.auth_ws_session(ws_session_id, user_session);
+        tracing::debug!("auth_ws_session sessions: {:?}", state.ws_sessions);
+    }
+
     async fn is_auth(&self, ws_session_id: &Uuid) -> Result<UserPayload> {
-        let inner = self.inner.lock().await;
-        tracing::debug!("WS sessions: {:?}", inner.ws_sessions);
-        match inner.ws_sessions.get(ws_session_id) {
+        let state = self.state.lock().await;
+        tracing::debug!("WS sessions: {:?}", state.ws_sessions);
+        match state.ws_sessions.get(ws_session_id) {
             Some(NitramSession::Authenticated {
-                db_session,
+                user_session,
                 topics_registered: _,
                 store,
             }) => Ok(UserPayload {
-                db_session: db_session.clone(),
+                user_session: user_session.clone(),
                 store: store.clone(),
             }),
             Some(NitramSession::Anonymous) => Err(Error::NotAuthorized),
@@ -132,11 +153,11 @@ impl Nitram {
                             Value::Null
                         }
                     };
-                    let mut inner = self.inner.lock().await;
-                    tracing::debug!("WS sessions: {:?}", inner.ws_sessions);
-                    match inner.ws_sessions.get_mut(ws_session_id) {
+                    let mut state = self.state.lock().await;
+                    tracing::debug!("WS sessions: {:?}", state.ws_sessions);
+                    match state.ws_sessions.get_mut(ws_session_id) {
                         Some(NitramSession::Authenticated {
-                            db_session: _,
+                            user_session: _,
                             topics_registered,
                             store: _,
                         }) => {
@@ -171,6 +192,7 @@ impl Nitram {
         let result = if is_public {
             let session_resource = WSSessionAnonymResource {
                 ws_session_id: ws_session_id.clone(),
+                nitram_state: self.state.clone(),
             };
             let rpc_resources = Resources::builder().append(session_resource).build();
             self.rpc_router_public
@@ -181,7 +203,7 @@ impl Nitram {
         } else if is_private {
             let user_payload = self.is_auth(ws_session_id).await?;
             let session_resource = WSSessionAuthedResource {
-                user_id: user_payload.db_session.user_id,
+                user_id: user_payload.user_session.user_id,
             };
             let rpc_resources = Resources::builder()
                 .append(session_resource)
@@ -287,11 +309,11 @@ impl Nitram {
         ws_session_id: &Uuid,
     ) -> Vec<NitramServerMessage> {
         let mut server_messages: Vec<NitramServerMessage> = vec![];
-        let inner = self.inner.lock().await;
-        let session = inner.ws_sessions.get(ws_session_id);
+        let state = self.state.lock().await;
+        let session = state.ws_sessions.get(ws_session_id);
         if let Some(session) = session {
             if let NitramSession::Authenticated {
-                db_session,
+                user_session,
                 topics_registered,
                 store,
             } = session
@@ -301,25 +323,23 @@ impl Nitram {
                     match topics_registered.contains_key(topic) {
                         true => {
                             let rpc_request = Request {
-                                id: "fake".into(),
+                                id: "server-message".into(),
                                 method: topic.clone(),
                                 params: topics_registered.get(topic).cloned(),
                             };
                             let session_resource = WSSessionAuthedResource {
-                                user_id: db_session.user_id.clone(),
+                                user_id: user_session.user_id.clone(),
                             };
                             let rpc_resources = Resources::builder()
                                 .append(session_resource)
                                 .append(store.clone())
                                 .build();
 
-                            let result: Result<Value> = self
+                            let result = self
                                 .rpc_router_server_messages
                                 .call_with_resources(rpc_request, rpc_resources)
                                 .await
-                                .map(|r| r.value)
-                                .map_err(|e| e.into());
-
+                                .map(|r| r.value);
                             match result {
                                 Ok(result) => {
                                     server_messages.push(NitramServerMessage {
@@ -327,9 +347,28 @@ impl Nitram {
                                         payload: result,
                                     });
                                 }
-                                Err(e) => {
-                                    tracing::error!("Error calling server message handler: {}", e);
-                                }
+                                Err(e) => match &e.error {
+                                    rpc_router::Error::Handler(e) => {
+                                        let method_error = e.get::<MethodError>();
+                                        match method_error {
+                                            Some(MethodError::NoResponse) => {
+                                                // This is not a real error, so we don't log it
+                                            }
+                                            _ => {
+                                                tracing::error!(
+                                                    "Error calling server message handler: {}",
+                                                    e
+                                                );
+                                            }
+                                        }
+                                    }
+                                    _ => {
+                                        tracing::error!(
+                                            "Error calling server message handler: {}",
+                                            e
+                                        );
+                                    }
+                                },
                             }
                         }
                         false => {

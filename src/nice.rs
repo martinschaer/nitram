@@ -6,6 +6,7 @@ pub enum NiceMessage {
     NotAuthorized,
     NotAuthenticated,
     BadRequest,
+    NoResponse,
 }
 
 impl core::fmt::Display for NiceMessage {
@@ -19,6 +20,7 @@ impl core::fmt::Display for NiceMessage {
                 NiceMessage::NotAuthorized => "not authorized".to_string(),
                 NiceMessage::NotAuthenticated => "not authenticated".to_string(),
                 NiceMessage::BadRequest => "bad request".to_string(),
+                NiceMessage::NoResponse => "no response".to_string(),
             }
         )
     }

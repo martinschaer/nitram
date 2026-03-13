@@ -1,6 +1,6 @@
 [package]
 name = "nitram"
-version = "0.3.2"
+version = "0.4.0"
 authors = ["Martin Schaer <martin@schaerweb.com>"]
 edition = "2021"
 description = "Opinionated RPC server for Rust and Typescript"
@@ -15,14 +15,14 @@ categories = [
 
 [dependencies]
 # -- Async
-tokio = { version = "1.22.0", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.43.0", features = ["macros", "rt-multi-thread"] }
 # -- Date Time
 chrono = { version = "0.4.39", features = ["serde"] }
 # -- Json
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.122"
 # -- Logging
-tracing = "0.1.40"
+tracing = "0.1.41"
 tracing-test = "0.2.5"
 # -- RPC
 rpc-router = "0.1.3"
@@ -33,17 +33,18 @@ ts-rs = { version = "10.1.0", features = [
     "uuid-impl",
 ] }
 # -- Other
-base64 = "0.22.1"
-bytestring = "1.3.1"
-derive_more = { version = "1.0.0", features = ["from"] }
-uuid = { version = "1.11.0", features = ["v4", "serde"] }
+bytestring = "1.5.0"
+derive_more = { version = "2.0.1", features = ["from"] }
+uuid = { version = "1.21.0", features = ["v4", "serde"] }
 # -- Web
-actix-web = "4.8.0"
-actix-ws = "0.3.0"
+actix-web = "4.13.0"
+actix-ws = "0.4.0"
 
 [dev-dependencies]
 # -- For example
 # Static SPA files
-actix-files = "0.6.6"
+actix-files = "0.6.10"
+# JWT
+jsonwebtoken = { version = "10.3.0", features = ["aws_lc_rs"] }
 # Logging
-tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }

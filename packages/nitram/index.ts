@@ -54,6 +54,7 @@ export class Server {
 
   // -- Private
   private _stop = false;
+  private url: string;
   private lastState: number = WebSocket.CLOSED;
   private ws: WebSocket;
   private handlers: HandlerByRequestId = new Map();
@@ -63,9 +64,15 @@ export class Server {
     new Map();
   private queue: QueueItem[] = [];
 
-  // -- Constructor
-  constructor() {
-    this.ws = new WebSocket(`${import.meta.env.VITE_WS_SERVER}/ws`);
+  /**
+   * Nitram server constructor
+   *
+   * @param url websocket server URL (e.g: `ws://0.0.0.0:8000/ws`)
+   */
+  constructor(url: string) {
+    this.url = url;
+    this.ws = new WebSocket(url);
+    this.check_connection();
     this.init();
     this.check_connection();
   }
@@ -160,9 +167,9 @@ export class Server {
     if (this.ws.readyState === WebSocket.CLOSED) {
       // retry to reconnect in 5 seconds
       setTimeout(() => {
-        this.ws = new WebSocket(`${import.meta.env.VITE_WS_SERVER}/ws`);
-        // TODO: do we need to call init again?
-        // this.init();
+        this.ws = new WebSocket(this.url);
+        // TODO: do we need to call this again?
+        this.init();
         if (this._stop) return;
         setTimeout(() => this.check_connection(), 5000);
       }, 5000);

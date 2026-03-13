@@ -1,10 +1,12 @@
 use actix_files::NamedFile;
 use actix_web::{middleware::Logger, web, App, HttpServer};
 use chrono::{DateTime, Utc};
+use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::Mutex;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
@@ -12,12 +14,19 @@ use ts_rs::TS;
 use uuid::Uuid;
 
 use nitram::{
-    auth::{parse_token, WSSessionAnonymResource, WSSessionAuthedResource},
+    auth::{WSSessionAnonymResource, WSSessionAuthedResource},
     error::{MethodError, MethodResult},
-    models::{AuthStrategy, DBSession, ParsedToken, Store},
+    models::Store,
     nitram_handler, ws, AuthenticateParams, FromResources, IdParams, IntoParams, NitramBuilder,
-    NitramInner,
 };
+
+const JWT_SECRET: &[u8] = b"nitram-example-secret-change-in-production";
+
+#[derive(Serialize, Deserialize)]
+struct JwtClaims {
+    sub: String, // user_id
+    exp: usize,  // expiry (unix timestamp)
+}
 
 #[derive(Clone, Deserialize, Serialize, TS)]
 struct User {
@@ -71,17 +80,13 @@ impl MockDB {
 
 #[derive(Clone)]
 struct NitramResource {
-    // db: Arc<Mutex<MockDB>>,
     db: MockDB,
-    // TODO: remove from NitramResource (possible?) it's only needed for auth
-    nitram_inner: Arc<Mutex<NitramInner>>,
 }
 impl FromResources for NitramResource {}
 impl NitramResource {
-    fn new(nitram_inner: Arc<Mutex<NitramInner>>) -> Self {
-        // let db = Arc::new(Mutex::new(MockDB::default()));
+    fn new() -> Self {
         let db = MockDB::default();
-        Self { db, nitram_inner }
+        Self { db }
     }
 }
 
@@ -89,23 +94,28 @@ impl NitramResource {
 // Handlers
 // =============================================================================
 
-// We are taking a shortcut here for the sake of the example. In a real-world
-// application, we would send the user an email with a link that would contain
-// an id to look for a token in the DB.
 async fn get_token_handler(
     resource: NitramResource,
     params: GetTokenParams,
 ) -> MethodResult<String> {
     let mut db = resource.db;
     let user_id = db.insert_user(User::new(params.user_name)).await;
-    let db_session =
-        DBSession::new(&user_id, AuthStrategy::EmailLink).map_err(|_| MethodError::Server)?;
-    let qty = {
-        let users = db.users.lock().await;
-        users.len()
-    };
+    let qty = db.users.lock().await.len();
     tracing::debug!("Users: {:?}", qty);
-    Ok(db_session.token)
+
+    let expires_at = Utc::now() + Duration::new(7 * 24 * 60 * 60, 0);
+    let claims = JwtClaims {
+        sub: user_id,
+        exp: expires_at.timestamp() as usize,
+    };
+    let token = encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(JWT_SECRET),
+    )
+    .map_err(|_| MethodError::Server)?;
+
+    Ok(token)
 }
 nitram_handler!(
     GetTokenAPI,    // Method name
@@ -125,11 +135,15 @@ async fn send_message_handler(
     let now = Utc::now();
     store.insert("last", json!(now)).await;
     store.insert("count", json!(count + 1)).await;
+    store.insert("notify", json!(true)).await;
     let mut db = resource.db;
+    // let mut db = resource.db.lock().await;
     db.insert_message(&params.channel, params.message, &session.user_id)
         .await;
+    // db.insert_message(&params.channel, params.message, &session.user_id);
     let messages = db.messages.lock().await;
     Ok(messages.get(&params.channel).unwrap().clone())
+    // Ok(db.messages.get(&params.channel).unwrap().clone())
 }
 nitram_handler!(
     SendMessageAPI,    // Method name
@@ -147,26 +161,33 @@ async fn authenticate_handler(
 ) -> MethodResult<String> {
     let db = resource.db;
     let token = params.token.clone();
-    let parsed_token: ParsedToken = parse_token(&token).map_err(|_| MethodError::Server)?;
-    tracing::debug!("Parsed token: {:?}", parsed_token);
+
+    tracing::debug!("Authenticating {}", token);
+
+    let token_data = decode::<JwtClaims>(
+        &token,
+        &DecodingKey::from_secret(JWT_SECRET),
+        &Validation::default(),
+    )
+    .map_err(|e| {
+        tracing::debug!("JWT decode error: {:?}", e);
+        MethodError::NotAuthenticated
+    })?;
+
+    let user_id = token_data.claims.sub;
+    let expires_at =
+        DateTime::from_timestamp(token_data.claims.exp as i64, 0).unwrap_or_else(Utc::now);
+
     let user = {
         let users = db.users.lock().await;
-        users.get(&parsed_token.user_id).cloned()
+        users.get(&user_id).cloned()
     };
     match user {
         Some(user) => {
             let user_id = user.id.clone();
 
             // authenticate nitram session
-            let mut nitram = resource.nitram_inner.lock().await;
-            let db_session = DBSession {
-                id: parsed_token.db_session_id,
-                user_id: user_id.clone(),
-                strategy: AuthStrategy::EmailLink,
-                token,
-                expires_at: parsed_token.expires_at,
-            };
-            nitram.auth_ws_session(anonym_session.ws_session_id, db_session);
+            anonym_session.auth(&user_id, expires_at).await;
 
             Ok(user_id)
         }
@@ -186,12 +207,17 @@ struct MessagesOutput {
 
 async fn messages_handler(
     resource: NitramResource,
-    store: Store,
+    mut store: Store,
     params: MessagesParams,
 ) -> MethodResult<MessagesOutput> {
     let last = store.get::<DateTime<Utc>>("last").await;
     let count = store.get::<i32>("count").await;
+    let notify = store.get::<bool>("notify").await.unwrap_or(true);
+    if !notify {
+        return Err(MethodError::NoResponse);
+    }
 
+    store.insert("notify", json!(false)).await;
     let messages = resource.db.messages.lock().await;
     Ok(MessagesOutput {
         messages: messages.get(&params.channel).cloned().unwrap_or_default(),
@@ -237,18 +263,21 @@ async fn main() -> std::io::Result<()> {
                 .from_env_lossy(),
         )
         .init();
-    let inner = NitramInner::default();
-    let inner_arc = Arc::new(Mutex::new(inner));
-    let resource = NitramResource::new(inner_arc.clone());
+
+    // rustls::crypto::aws_lc_rs::default_provider()
+    //     .install_default()
+    //     .map_err(|_| std::io::ErrorKind::Other)?;
+
+    let resource = NitramResource::new();
     let cb = NitramBuilder::default()
+        .set_server_messages_interval(1000)
         .add_resource(resource)
         .add_public_handler("Authenticate", authenticate_handler)
         .add_public_handler("GetToken", get_token_handler)
         .add_private_handler("SendMessage", send_message_handler)
         .add_private_handler("GetUser", get_user_handler)
         .add_server_message_handler("Messages", messages_handler);
-    let nitram = cb.build(inner_arc);
-    tracing::info!("Starting server");
+    let nitram = cb.build();
     HttpServer::new(move || {
         App::new()
             .wrap(Logger::default())

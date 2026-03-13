@@ -1,8 +1,6 @@
 use rpc_router::{FromResources, Handler, RouterBuilder};
-use std::sync::Arc;
-use tokio::sync::Mutex;
 
-use crate::{Nitram, NitramInner};
+use crate::Nitram;
 
 pub struct NitramBuilder {
     rpc_router_builder_public: RouterBuilder,
@@ -11,6 +9,10 @@ pub struct NitramBuilder {
     registered_public_handlers: Vec<String>,
     registered_private_handlers: Vec<String>,
     registered_server_messages_handlers: Vec<String>,
+    ping_interval_in_seconds: Option<u64>,
+    server_messages_interval_in_millis: Option<u64>,
+    timeout_in_seconds: Option<u64>,
+    max_frame_size: Option<usize>,
 }
 
 impl Default for NitramBuilder {
@@ -22,11 +24,20 @@ impl Default for NitramBuilder {
             registered_public_handlers: vec![],
             registered_private_handlers: vec![],
             registered_server_messages_handlers: vec![],
+            ping_interval_in_seconds: None,
+            server_messages_interval_in_millis: None,
+            timeout_in_seconds: None,
+            max_frame_size: None,
         }
     }
 }
 
 impl NitramBuilder {
+    pub fn set_server_messages_interval(mut self, interval_in_millis: u64) -> Self {
+        self.server_messages_interval_in_millis = Some(interval_in_millis);
+        self
+    }
+
     pub fn add_resource(
         mut self,
         resource: impl FromResources + Clone + Send + Sync + 'static,
@@ -86,7 +97,7 @@ impl NitramBuilder {
         self
     }
 
-    pub fn build(self, inner: Arc<Mutex<NitramInner>>) -> Nitram {
+    pub fn build(self) -> Nitram {
         tracing::debug!(
             "Registered public handlers: {:?}",
             self.registered_public_handlers
@@ -106,7 +117,10 @@ impl NitramBuilder {
             self.registered_public_handlers,
             self.registered_private_handlers,
             self.registered_server_messages_handlers,
-            inner,
+            self.ping_interval_in_seconds,
+            self.server_messages_interval_in_millis,
+            self.timeout_in_seconds,
+            self.max_frame_size,
         )
     }
 }

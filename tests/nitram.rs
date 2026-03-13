@@ -1,16 +1,15 @@
 #[cfg(test)]
 mod tests {
+    use chrono::Utc;
     use serde::{Deserialize, Serialize};
     use serde_json::json;
-    use std::sync::Arc;
-    use tokio::sync::Mutex;
     use tracing_test::traced_test;
     use uuid::Uuid;
 
     use nitram::{
         auth::{WSSessionAnonymResource, WSSessionAuthedResource},
         error::MethodError,
-        models::{AuthStrategy, DBSession},
+        models::UserSession,
         FromResources, IntoParams, Nitram, NitramBuilder,
     };
 
@@ -53,21 +52,21 @@ mod tests {
     }
 
     async fn prepare() -> Context {
-        let inner = nitram::NitramInner::default();
-        let inner_arc = Arc::new(Mutex::new(inner));
-        let inner_arc_clone = Arc::clone(&inner_arc);
         let mm = ModelManager {};
         let cb = NitramBuilder::default()
             .add_resource(mm)
             .add_public_handler("Mock", mock_handler)
             .add_private_handler("MockPrivate", mock_private_handler);
-        let nitram = cb.build(inner_arc);
+        let nitram = cb.build();
 
-        let mut nitram_inner = inner_arc_clone.lock().await;
-        let anonym = nitram_inner.add_anonym_ws_session();
-        let authed = nitram_inner.add_anonym_ws_session();
-        let db_session = DBSession::new("fake_user", AuthStrategy::EmailLink).unwrap();
-        nitram_inner.auth_ws_session(authed, db_session);
+        let anonym = nitram.insert().await;
+        let authed = nitram.insert().await;
+        let db_session = UserSession {
+            id: Uuid::new_v4(),
+            user_id: "fake_user".to_string(),
+            expires_at: Utc::now(),
+        };
+        nitram._auth_ws_session(authed, db_session).await;
         Context {
             nitram,
             anonym_ws_sess_id: anonym,
