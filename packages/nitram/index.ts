@@ -72,8 +72,8 @@ export class Server {
   constructor(url: string) {
     this.url = url;
     this.ws = new WebSocket(url);
-    this.check_connection();
     this.init();
+    this.check_connection();
   }
 
   // ---------------------------------------------------------------------------
@@ -167,7 +167,6 @@ export class Server {
       // retry to reconnect in 5 seconds
       setTimeout(() => {
         this.ws = new WebSocket(this.url);
-        this.init();
         if (this._stop) return;
         setTimeout(() => this.check_connection(), 5000);
       }, 5000);
