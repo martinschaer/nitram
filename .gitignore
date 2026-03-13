@@ -2,3 +2,4 @@
 Cargo.lock
 node_modules
 /packages/nitram/nitram-*.tgz
+.npmrc
