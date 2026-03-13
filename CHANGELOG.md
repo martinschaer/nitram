@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.4.0] - 2026-03-04
+## [0.4.0] - 2026-03-13
 
 ### Added
 
@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - NitramInner is not required as a resource
+- `WSSessionAnonymResource::auth()` no longer takes a `session_id` parameter — the WebSocket session ID is now used internally as the session ID
+- `UserSession::id` type changed from `String` to `Uuid`
 
 ### Changed
 

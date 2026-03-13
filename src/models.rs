@@ -6,13 +6,15 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use uuid::Uuid;
 
 pub type UserSessionId = String;
 
 /// **User session** that is stored in the database
 #[derive(Clone, Serialize, Deserialize)]
 pub struct UserSession {
-    pub id: UserSessionId,
+    /// This is the websocket session id
+    pub id: Uuid,
     pub user_id: String,
     pub expires_at: DateTime<Utc>,
 }

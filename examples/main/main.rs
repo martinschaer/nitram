@@ -25,7 +25,6 @@ const JWT_SECRET: &[u8] = b"nitram-example-secret-change-in-production";
 #[derive(Serialize, Deserialize)]
 struct JwtClaims {
     sub: String, // user_id
-    jti: String, // session id
     exp: usize,  // expiry (unix timestamp)
 }
 
@@ -99,11 +98,9 @@ async fn get_token_handler(
     let qty = db.users.len();
     tracing::debug!("Users: {:?}", qty);
 
-    let session_id = Uuid::new_v4().to_string();
     let expires_at = Utc::now() + Duration::new(7 * 24 * 60 * 60, 0);
     let claims = JwtClaims {
         sub: user_id,
-        jti: session_id,
         exp: expires_at.timestamp() as usize,
     };
     let token = encode(
@@ -168,7 +165,6 @@ async fn authenticate_handler(
     })?;
 
     let user_id = token_data.claims.sub;
-    let session_id = token_data.claims.jti;
     let expires_at =
         DateTime::from_timestamp(token_data.claims.exp as i64, 0).unwrap_or_else(Utc::now);
 
@@ -177,7 +173,7 @@ async fn authenticate_handler(
             let user_id = user.id.clone();
 
             // authenticate nitram session
-            anonym_session.auth(&session_id, &user_id, expires_at).await;
+            anonym_session.auth(&user_id, expires_at).await;
 
             Ok(user_id)
         }

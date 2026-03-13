@@ -18,9 +18,9 @@ pub struct WSSessionAnonymResource {
 }
 
 impl WSSessionAnonymResource {
-    pub async fn auth(&self, session_id: &str, user_id: &str, expires_at: DateTime<Utc>) -> () {
+    pub async fn auth(&self, user_id: &str, expires_at: DateTime<Utc>) -> () {
         let user_session = UserSession {
-            id: session_id.to_string(),
+            id: self.ws_session_id.clone(),
             user_id: user_id.to_string(),
             expires_at,
         };

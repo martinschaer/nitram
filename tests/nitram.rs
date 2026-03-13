@@ -62,7 +62,7 @@ mod tests {
         let anonym = nitram.insert().await;
         let authed = nitram.insert().await;
         let db_session = UserSession {
-            id: Uuid::new_v4().to_string(),
+            id: Uuid::new_v4(),
             user_id: "fake_user".to_string(),
             expires_at: Utc::now(),
         };
