@@ -11,6 +11,8 @@ Opinionated RPC server for Rust and Typescript.
 ```sh
 # -- NPM
 cd packages/nitram
+# if not logged in
+bunx npm login
 # bun pm pack --dry-run
 # bun pm pack
 # bun publish --dry-run
