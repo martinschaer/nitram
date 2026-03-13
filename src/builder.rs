@@ -1,8 +1,6 @@
 use rpc_router::{FromResources, Handler, RouterBuilder};
-use std::sync::Arc;
-use tokio::sync::Mutex;
 
-use crate::{Nitram, NitramInner};
+use crate::Nitram;
 
 pub struct NitramBuilder {
     rpc_router_builder_public: RouterBuilder,
@@ -99,7 +97,7 @@ impl NitramBuilder {
         self
     }
 
-    pub fn build(self, inner: Arc<Mutex<NitramInner>>) -> Nitram {
+    pub fn build(self) -> Nitram {
         tracing::debug!(
             "Registered public handlers: {:?}",
             self.registered_public_handlers
@@ -113,7 +111,6 @@ impl NitramBuilder {
             self.registered_server_messages_handlers
         );
         Nitram::new(
-            inner,
             self.rpc_router_builder_public.build(),
             self.rpc_router_builder_private.build(),
             self.rpc_router_builder_server_messages.build(),

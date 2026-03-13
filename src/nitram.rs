@@ -8,37 +8,37 @@ use uuid::Uuid;
 use crate::auth::{NitramSession, WSSessionAnonymResource, WSSessionAuthedResource};
 use crate::error::{Error, MethodError, Result};
 use crate::messages::{NitramRequest, NitramResponse, NitramServerMessage};
-use crate::models::{DBSession, UserPayload};
+use crate::models::{UserPayload, UserSession};
 use crate::nice::{Nice, NiceMessage};
 
-pub struct NitramInner {
+pub struct NitramState {
     ws_sessions: BTreeMap<Uuid, NitramSession>,
 }
 
-impl Default for NitramInner {
-    fn default() -> Self {
-        NitramInner {
+impl NitramState {
+    fn new() -> Self {
+        NitramState {
             ws_sessions: BTreeMap::new(),
         }
     }
 }
 
-impl NitramInner {
+impl NitramState {
     pub fn add_anonym_ws_session(&mut self) -> Uuid {
         let id = Uuid::new_v4();
         self.ws_sessions.insert(id, NitramSession::Anonymous);
         id
     }
-    pub fn auth_ws_session(&mut self, ws_session_id: Uuid, db_session: DBSession) -> () {
+    pub fn auth_ws_session(&mut self, ws_session_id: Uuid, user_session: UserSession) -> () {
         self.ws_sessions
-            .insert(ws_session_id, NitramSession::new(db_session));
+            .insert(ws_session_id, NitramSession::new_auth(user_session));
         tracing::debug!("auth_ws_session sessions: {:?}", self.ws_sessions);
     }
 }
 
 #[derive(Clone)]
 pub struct Nitram {
-    pub inner: Arc<Mutex<NitramInner>>,
+    state: Arc<Mutex<NitramState>>,
     rpc_router_public: Router,
     rpc_router_private: Router,
     rpc_router_server_messages: Router,
@@ -53,7 +53,6 @@ pub struct Nitram {
 
 impl Nitram {
     pub fn new(
-        inner: Arc<Mutex<NitramInner>>,
         rpc_router_public: Router,
         rpc_router_private: Router,
         rpc_router_server_messages: Router,
@@ -67,7 +66,7 @@ impl Nitram {
     ) -> Self {
         // TODO: spawn a tokio task to read from live query streams
         Nitram {
-            inner,
+            state: Arc::new(Mutex::new(NitramState::new())),
             rpc_router_public,
             rpc_router_private,
             rpc_router_server_messages,
@@ -85,17 +84,17 @@ impl Nitram {
 
     pub async fn insert(&self) -> Uuid {
         let uuid = Uuid::new_v4();
-        let mut inner = self.inner.lock().await;
-        inner.ws_sessions.insert(uuid, NitramSession::Anonymous);
-        let count = inner.ws_sessions.len();
+        let mut state = self.state.lock().await;
+        state.ws_sessions.insert(uuid, NitramSession::Anonymous);
+        let count = state.ws_sessions.len();
         tracing::info!(sess = uuid.to_string(), count = count, "Inserted session");
         uuid
     }
 
     pub async fn remove(&self, ws_session_id: &Uuid) {
-        let mut inner = self.inner.lock().await;
-        let removed = inner.ws_sessions.remove(ws_session_id);
-        let count = inner.ws_sessions.len();
+        let mut state = self.state.lock().await;
+        let removed = state.ws_sessions.remove(ws_session_id);
+        let count = state.ws_sessions.len();
         tracing::info!(
             sess = ws_session_id.to_string(),
             kind = format!("{:?}", removed),
@@ -104,16 +103,24 @@ impl Nitram {
         );
     }
 
+    /// This is meant to be used for testing. To authenticate a ws session you
+    /// should use NitramInstance from within a handler.
+    pub async fn _auth_ws_session(&self, ws_session_id: Uuid, user_session: UserSession) -> () {
+        let mut state = self.state.lock().await;
+        state.auth_ws_session(ws_session_id, user_session);
+        tracing::debug!("auth_ws_session sessions: {:?}", state.ws_sessions);
+    }
+
     async fn is_auth(&self, ws_session_id: &Uuid) -> Result<UserPayload> {
-        let inner = self.inner.lock().await;
-        tracing::debug!("WS sessions: {:?}", inner.ws_sessions);
-        match inner.ws_sessions.get(ws_session_id) {
+        let state = self.state.lock().await;
+        tracing::debug!("WS sessions: {:?}", state.ws_sessions);
+        match state.ws_sessions.get(ws_session_id) {
             Some(NitramSession::Authenticated {
-                db_session,
+                user_session,
                 topics_registered: _,
                 store,
             }) => Ok(UserPayload {
-                db_session: db_session.clone(),
+                user_session: user_session.clone(),
                 store: store.clone(),
             }),
             Some(NitramSession::Anonymous) => Err(Error::NotAuthorized),
@@ -146,11 +153,11 @@ impl Nitram {
                             Value::Null
                         }
                     };
-                    let mut inner = self.inner.lock().await;
-                    tracing::debug!("WS sessions: {:?}", inner.ws_sessions);
-                    match inner.ws_sessions.get_mut(ws_session_id) {
+                    let mut state = self.state.lock().await;
+                    tracing::debug!("WS sessions: {:?}", state.ws_sessions);
+                    match state.ws_sessions.get_mut(ws_session_id) {
                         Some(NitramSession::Authenticated {
-                            db_session: _,
+                            user_session: _,
                             topics_registered,
                             store: _,
                         }) => {
@@ -185,6 +192,7 @@ impl Nitram {
         let result = if is_public {
             let session_resource = WSSessionAnonymResource {
                 ws_session_id: ws_session_id.clone(),
+                nitram_state: self.state.clone(),
             };
             let rpc_resources = Resources::builder().append(session_resource).build();
             self.rpc_router_public
@@ -195,7 +203,7 @@ impl Nitram {
         } else if is_private {
             let user_payload = self.is_auth(ws_session_id).await?;
             let session_resource = WSSessionAuthedResource {
-                user_id: user_payload.db_session.user_id,
+                user_id: user_payload.user_session.user_id,
             };
             let rpc_resources = Resources::builder()
                 .append(session_resource)
@@ -301,11 +309,11 @@ impl Nitram {
         ws_session_id: &Uuid,
     ) -> Vec<NitramServerMessage> {
         let mut server_messages: Vec<NitramServerMessage> = vec![];
-        let inner = self.inner.lock().await;
-        let session = inner.ws_sessions.get(ws_session_id);
+        let state = self.state.lock().await;
+        let session = state.ws_sessions.get(ws_session_id);
         if let Some(session) = session {
             if let NitramSession::Authenticated {
-                db_session,
+                user_session,
                 topics_registered,
                 store,
             } = session
@@ -320,7 +328,7 @@ impl Nitram {
                                 params: topics_registered.get(topic).cloned(),
                             };
                             let session_resource = WSSessionAuthedResource {
-                                user_id: db_session.user_id.clone(),
+                                user_id: user_session.user_id.clone(),
                             };
                             let rpc_resources = Resources::builder()
                                 .append(session_resource)
