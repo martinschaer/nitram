@@ -167,8 +167,6 @@ export class Server {
       // retry to reconnect in 5 seconds
       setTimeout(() => {
         this.ws = new WebSocket(this.url);
-        // TODO: do we need to call this again?
-        this.init();
         if (this._stop) return;
         setTimeout(() => this.check_connection(), 5000);
       }, 5000);
