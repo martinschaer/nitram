@@ -137,13 +137,10 @@ async fn send_message_handler(
     store.insert("count", json!(count + 1)).await;
     store.insert("notify", json!(true)).await;
     let mut db = resource.db;
-    // let mut db = resource.db.lock().await;
     db.insert_message(&params.channel, params.message, &session.user_id)
         .await;
-    // db.insert_message(&params.channel, params.message, &session.user_id);
     let messages = db.messages.lock().await;
     Ok(messages.get(&params.channel).unwrap().clone())
-    // Ok(db.messages.get(&params.channel).unwrap().clone())
 }
 nitram_handler!(
     SendMessageAPI,    // Method name

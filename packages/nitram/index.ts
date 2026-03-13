@@ -72,7 +72,6 @@ export class Server {
   constructor(url: string) {
     this.url = url;
     this.ws = new WebSocket(url);
-    this.check_connection();
     this.init();
     this.check_connection();
   }
